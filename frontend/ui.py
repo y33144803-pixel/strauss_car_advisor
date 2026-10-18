@@ -113,8 +113,20 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-
 
 /* באנר עליון קבוע, עם כפתורי הניווט (מסך עובד / מסך נציג) */
 .st-key-topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 1000002; padding: 8px 28px;
-                 background: linear-gradient(100deg, var(--accent), var(--primary));
-                 box-shadow: 0 2px 10px rgba(0,0,0,.25); direction: rtl; }
+                 background: radial-gradient(circle at 12% 30%, rgba(255,255,255,.22), transparent 38%),
+                             linear-gradient(100deg, var(--accent), var(--primary));
+                 border-bottom: 3px solid rgba(255,255,255,.35); border-radius: 0 0 18px 18px;
+                 box-shadow: 0 6px 18px rgba(80,20,110,.35); direction: rtl; }
+.st-key-topbar img { border: 3px solid rgba(255,255,255,.65); box-shadow: 0 3px 10px rgba(0,0,0,.25); }
+.st-key-topbar .bar-title { text-shadow: 0 1px 3px rgba(0,0,0,.25); }
+.st-key-topbar .user-chip { display: inline-flex; align-items: center; gap: 10px; background: rgba(255,255,255,.18);
+                            border: 1px solid rgba(255,255,255,.35); border-radius: 999px; padding: 5px 16px 5px 6px; }
+.st-key-topbar .user-chip .dot { width: 34px; height: 34px; border-radius: 50%; background: #fff; color: var(--primary);
+                                 display: inline-flex; align-items: center; justify-content: center; font-weight: 800;
+                                 font-size: 1.1rem; }
+.st-key-topbar .user-chip .dot, .st-key-topbar .user-chip .dot * { color: var(--primary); }
+.st-key-topbar .user-chip .who { line-height: 1.15; font-weight: 700; font-size: .95rem; }
+.st-key-topbar .user-chip .role { font-size: .75rem; opacity: .9; font-weight: 400; }
 .st-key-topbar, .st-key-topbar * { color: #fff; }
 .st-key-topbar .bar-title { font-size: 1.35rem; font-weight: 700; line-height: 1.2; }
 .st-key-topbar .bar-sub { font-size: .85rem; opacity: .92; }
@@ -174,8 +186,17 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 /* סרגל הצד: רשימת שיחות (כפתור לכל שיחה, השיחה הפעילה בסגול) ושורת איקונים בתחתית */
 .st-key-chat-list button { justify-content: flex-start; text-align: right; }
 .st-key-chat-list button p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
+/* איקון ⋯ בתוך כפתור השיחה, בקצה השמאלי שלו */
+[class*="st-key-chatrow_"] { position: relative; }
+[class*="st-key-chatrow_"] > [data-testid="stLayoutWrapper"]:has([data-testid="stPopover"]) {
+    position: absolute; left: 6px; top: 50%; transform: translateY(-50%); width: auto; z-index: 2; }
+[class*="st-key-chatrow_"] [data-testid="stPopover"] button { background: transparent; border: 0; box-shadow: none;
+    min-height: 0; padding: 2px 4px; color: #6b6b7b; }
+[class*="st-key-chatrow_"] [data-testid="stPopover"] button:hover { background: rgba(0,0,0,.08); }
+[class*="st-key-chatrow_a_"] [data-testid="stPopover"] button, [class*="st-key-chatrow_a_"] [data-testid="stPopover"] button * { color: #fff; }
+[class*="st-key-chatrow_"] [data-testid="stPopover"] button div[aria-hidden="true"] { display: none; }
+.st-key-chat-list button p { padding-left: 34px; }
 [data-testid="stSidebarUserContent"] > div > [data-testid="stVerticalBlock"] { min-height: calc(100vh - 7rem); }
-.st-key-chat-list [data-testid="stPopover"] button div[aria-hidden="true"] { display: none; }
 div:has(> .st-key-sidebar-footer) { order: 999; margin-top: auto; }
 
 /* פאנל הצד: "הנתונים שנקלטו עד כה" */
@@ -282,7 +303,16 @@ def topbar(pages: list, current, user: dict | None = None) -> None:
                              unsafe_allow_html=True)
         with nav:
             if not pages:                            # מסך הכניסה והמשתמשים המחוברים: הבאנר בלי כפתורים
-                return                               # (הגדרות ויציאה נמצאים בסרגל הצד)
+                if user and user.get("role") != "both":      # (הגדרות ויציאה בסרגל הצד) - רק מי שמחובר
+                    name = (user.get("display_name") or user["username"]).strip()
+                    role = "עובד" if user.get("role") == "employee" else "נציג תחבורה"
+                    st.markdown("<div style='display:flex; justify-content:flex-end; direction:ltr'>"
+                                "<div class='user-chip' style='direction:rtl'>"
+                                f"<span class='dot'>{html.escape(name[0])}</span>"
+                                f"<span class='who'>שלום, {html.escape(name)}"
+                                f"<br><span class='role'>{role}</span></span></div></div>",
+                                unsafe_allow_html=True)
+                return
             columns = st.columns(len(pages))
             for column, page in zip(columns, pages):
                 if current is not None and page.title == current.title:
@@ -546,20 +576,21 @@ def render_history_sidebar(current_sid: str | None) -> None:
         with st.container(key="chat-list"):
             for item in sessions:
                 session_id = item["session_id"]
-                title_col, menu_col = st.columns([5, 1.4], vertical_alignment="center")
                 active = session_id == current_sid
-                if title_col.button(item["title"], key=f"open_{session_id}", use_container_width=True,
-                                    type="primary" if active else "secondary", help=item["preview"]):
-                    _open_session(session_id)
-                with menu_col.popover("", icon=":material/more_horiz:", use_container_width=True):
-                    new_title = st.text_input("שם השיחה", value=item["title"], key=f"title_{session_id}")
-                    if st.button("שמירת שם", key=f"save_{session_id}", use_container_width=True):
-                        db.rename_session(session_id, owner, new_title)
-                        st.rerun()
-                    if st.button("מחיקת השיחה", key=f"delete_{session_id}", icon=":material/delete:",
-                                 use_container_width=True):
-                        st.session_state["confirm_delete"] = session_id
-                        st.rerun()
+                # שורה אחת: כפתור השיחה, ואיקון התפריט (⋯) מוטבע בתוכו (ממוקם ב-CSS מעל קצה הכפתור)
+                with st.container(key=f"chatrow_{'a' if active else 'n'}_{session_id}"):
+                    if st.button(item["title"], key=f"open_{session_id}", use_container_width=True,
+                                 type="primary" if active else "secondary", help=item["preview"]):
+                        _open_session(session_id)
+                    with st.popover("", icon=":material/more_horiz:"):
+                        new_title = st.text_input("שם השיחה", value=item["title"], key=f"title_{session_id}")
+                        if st.button("שמירת שם", key=f"save_{session_id}", use_container_width=True):
+                            db.rename_session(session_id, owner, new_title)
+                            st.rerun()
+                        if st.button("מחיקת השיחה", key=f"delete_{session_id}", icon=":material/delete:",
+                                     use_container_width=True):
+                            st.session_state["confirm_delete"] = session_id
+                            st.rerun()
 
 
 def render_sidebar_footer() -> None:

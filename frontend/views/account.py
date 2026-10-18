@@ -31,7 +31,12 @@ if st.session_state["account_form"] == "username":
         st.caption("שם המשתמש משמש לכניסה. השיחות וההיסטוריה שלך נשמרות. נדרשת הסיסמה הנוכחית.")
         new_username = st.text_input("שם משתמש חדש")
         password = st.text_input("סיסמה נוכחית", type="password")
-        submitted = st.form_submit_button("עדכון שם משתמש", type="primary")
+        submit_col, cancel_col, _ = st.columns([1, 1, 2])
+        submitted = submit_col.form_submit_button("עדכון שם משתמש", type="primary")
+        cancelled = cancel_col.form_submit_button("ביטול")
+    if cancelled:
+        st.session_state["account_form"] = None
+        st.rerun()
     if submitted:
         try:
             updated = auth.change_username(user["username"], password, new_username)
@@ -48,7 +53,12 @@ if st.session_state["account_form"] == "password":
         old = st.text_input("סיסמה נוכחית", type="password")
         new = st.text_input("סיסמה חדשה", type="password")
         again = st.text_input("אימות סיסמה חדשה", type="password")
-        submitted = st.form_submit_button("עדכון סיסמה", type="primary")
+        submit_col, cancel_col, _ = st.columns([1, 1, 2])
+        submitted = submit_col.form_submit_button("עדכון סיסמה", type="primary")
+        cancelled = cancel_col.form_submit_button("ביטול")
+    if cancelled:
+        st.session_state["account_form"] = None
+        st.rerun()
     if submitted:
         if new != again:
             st.error("הסיסמה החדשה והאימות אינם זהים.")

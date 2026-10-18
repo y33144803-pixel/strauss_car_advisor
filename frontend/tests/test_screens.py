@@ -574,3 +574,15 @@ def test_cancel_keeps_the_conversation(auth_on):
     at.sidebar.button(key="confirm_delete_no").click().run()
     assert db.session_exists("h2")
     assert not at.sidebar.warning
+
+
+def test_account_forms_have_cancel_buttons(account_users):
+    at = account_app()
+    for opener, submit in (("החלפת שם משתמש", "עדכון שם משתמש"), ("החלפת סיסמה", "עדכון סיסמה")):
+        next(b for b in at.button if b.label == opener).click().run()
+        assert at.text_input                                         # הטופס נפתח
+        assert any(b.label == "ביטול" for b in at.button)
+        next(b for b in at.button if b.label == "ביטול").click().run()
+        assert not at.text_input                                     # ביטול סוגר בלי לשנות כלום
+    import db
+    assert db.get_user("dana")
