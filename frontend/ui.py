@@ -180,9 +180,10 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 .st-key-logincard { background: #fff; border: 1px solid #E6DDF0; border-radius: 18px; padding: 26px 24px;
                     box-shadow: 0 8px 24px rgba(0,0,0,.07); }
 .st-key-logincard h3 { margin-top: 0; }
-.st-key-loginimage { position: fixed; left: 0; bottom: 0; width: auto; margin: 0; padding: 0; line-height: 0; z-index: 1; }
+.st-key-logincard { position: relative; z-index: 3; }      /* הכרטיס מעל שולי התמונה (רקע לבן) */
+.st-key-loginimage { position: fixed; left: 4vw; bottom: 0; width: auto; margin: 0; padding: 0; line-height: 0; z-index: 1; }
 .st-key-loginimage, .st-key-loginimage * { margin: 0 !important; padding: 0 !important; }
-.st-key-loginimage img { display: block; height: calc(100vh - 110px); width: auto !important; max-width: 52vw;
+.st-key-loginimage img { display: block; height: calc(100vh - 78px); width: auto !important; max-width: 52vw;
                          object-fit: contain; object-position: left bottom; border-radius: 0; }
 @media (max-width: 900px) {
   .st-key-loginimage { position: static; }
@@ -290,12 +291,13 @@ def setup_page() -> None:
     st.html(f"<script>{COPY_BUTTON_JS}</script>", unsafe_allow_javascript=True)   # כפתור "העתקה" בכל הודעה בשיחה
 
 
-MAIN_VIEW_BY_ROLE = {"employee": ("views/employee.py", "השיחה שלי"), "rep": ("views/representative.py", "מסך נציג"),
+MAIN_VIEW_BY_ROLE = {"employee": ("views/employee.py", "מסך עובד"), "rep": ("views/representative.py", "מסך נציג"),
                      "admin": ("views/admin.py", "מסך ניהול")}
 
 
-def render_user_menu(user: dict) -> None:
-    """שם המשתמש בבאנר (עם האות הראשונה בעיגול). לחיצה פותחת תפריט: המסך הראשי, האזור האישי ויציאה."""
+def render_user_menu(user: dict, current=None) -> None:
+    """בבאנר: כפתור המסך הראשי של התפקיד (מסומן כשנמצאים בו), ושם המשתמש (עם האות הראשונה בעיגול).
+    לחיצה על השם פותחת תפריט: האזור האישי ויציאה."""
     import auth
     name = (user.get("display_name") or user["username"]).strip()
     letter = json.dumps(name[0], ensure_ascii=False)
@@ -303,16 +305,22 @@ def render_user_menu(user: dict) -> None:
                 "align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; "
                 "background: #fff; color: var(--primary); font-weight: 800; font-size: 1.1rem; margin-inline-end: 10px; }"
                 "</style>", unsafe_allow_html=True)
-    with st.container(key="user-menu"):
-        with st.popover(f"שלום, {name}"):
-            st.caption(auth.ROLE_LABELS.get(user.get("role"), ""))
-            main = MAIN_VIEW_BY_ROLE.get(user.get("role"))
-            if main and st.button(main[1], key="menu_main", icon=":material/home:", use_container_width=True):
-                st.switch_page(main[0])
-            if st.button("האזור האישי", key="menu_account", icon=":material/settings:", use_container_width=True):
-                st.switch_page("views/account.py")
-            if st.button("יציאה", key="menu_logout", icon=":material/logout:", use_container_width=True):
-                logout()
+    main_col, name_col = st.columns([0.8, 1.3], vertical_alignment="center")
+    main = MAIN_VIEW_BY_ROLE.get(user.get("role"))
+    if main:
+        path, label = main
+        if current is not None and current.title == label:
+            main_col.markdown(f"<div class='nav-pill active'>{html.escape(label)}</div>", unsafe_allow_html=True)
+        elif main_col.button(label, key="banner_main", use_container_width=True):
+            st.switch_page(path)
+    with name_col:
+        with st.container(key="user-menu"):
+            with st.popover(f"שלום, {name}"):
+                st.caption(auth.ROLE_LABELS.get(user.get("role"), ""))
+                if st.button("האזור האישי", key="menu_account", icon=":material/settings:", use_container_width=True):
+                    st.switch_page("views/account.py")
+                if st.button("יציאה", key="menu_logout", icon=":material/logout:", use_container_width=True):
+                    logout()
 
 
 def topbar(pages: list, current, user: dict | None = None) -> None:
@@ -333,7 +341,7 @@ def topbar(pages: list, current, user: dict | None = None) -> None:
         with nav:
             if not pages:                            # מסך הכניסה והמשתמשים המחוברים: הבאנר בלי כפתורי ניווט
                 if user and user.get("role") != "both":      # שם המשתמש בבאנר פותח תפריט: האזור האישי ויציאה
-                    render_user_menu(user)
+                    render_user_menu(user, current)
                 return
             columns = st.columns(len(pages))
             for column, page in zip(columns, pages):
@@ -549,7 +557,7 @@ def render_login() -> None:
     import auth
     import db
     st.markdown("<style>[data-testid='stSidebar'], [data-testid='stSidebarCollapsedControl'] { display: none; }</style>", unsafe_allow_html=True)
-    form_col, image_col = st.columns([1, 1], gap="large", vertical_alignment="center")
+    form_col, image_col = st.columns([0.7, 1.3], gap="large", vertical_alignment="center")
     with form_col:
         with st.container(key="logincard"):
             st.markdown("### כניסה למערכת")

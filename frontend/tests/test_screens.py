@@ -529,7 +529,8 @@ def logged_in_dana(extra_sessions=True) -> AppTest:
 def test_banner_name_opens_a_menu_with_account_and_logout(auth_on):
     at = logged_in_dana(extra_sessions=False)
     keys = [b.key for b in at.button]
-    assert "menu_account" in keys and "menu_logout" in keys and "menu_main" in keys
+    assert "menu_account" in keys and "menu_logout" in keys
+    assert "menu_main" not in keys                                    # המסך הראשי בכפתור בבאנר, לא בתפריט השם
     assert not any(b.label in ("מסך עובד", "מסך נציג", "האזור שלי") for b in at.button)   # אין כפתורי ניווט בבאנר
 
 
