@@ -158,15 +158,18 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 /* תיבת הכתיבה באותו רוחב כמו עמודת השיחה (3 מתוך 5, פחות הרווח בין העמודות), צמודה לצד הימני */
 [data-testid="stBottomBlockContainer"] [data-testid="stChatInput"] { width: calc((100% - 2rem) * 0.6); margin-right: 0; margin-left: auto; }
 
-/* מסך הכניסה: באנר, כרטיס טופס ותמונה; בלי סרגל צד */
-.login-hero { background: linear-gradient(100deg, var(--accent), var(--primary)); color: #fff; border-radius: 18px;
-              padding: 22px 28px; margin: 0 0 18px 0; box-shadow: 0 6px 20px rgba(124,58,168,.25); direction: rtl; }
-.login-hero .t { font-size: 1.7rem; font-weight: 800; line-height: 1.25; }
-.login-hero .s { font-size: 1rem; opacity: .95; margin-top: 4px; }
+/* מסך הכניסה: כרטיס טופס, והתמונה צמודה לתחתית המסך (בלי שוליים) */
 .st-key-logincard { background: #fff; border: 1px solid #E6DDF0; border-radius: 18px; padding: 26px 24px;
                     box-shadow: 0 8px 24px rgba(0,0,0,.07); }
 .st-key-logincard h3 { margin-top: 0; }
-.st-key-loginimage img { border-radius: 18px; }
+.st-key-loginimage { position: fixed; left: 0; bottom: 0; width: auto; margin: 0; padding: 0; line-height: 0; z-index: 1; }
+.st-key-loginimage, .st-key-loginimage * { margin: 0 !important; padding: 0 !important; }
+.st-key-loginimage img { display: block; height: calc(100vh - 110px); width: auto !important; max-width: 52vw;
+                         object-fit: contain; object-position: left bottom; border-radius: 0; }
+@media (max-width: 900px) {
+  .st-key-loginimage { position: static; }
+  .st-key-loginimage img { height: auto; width: 100% !important; max-width: 100%; }
+}
 
 /* פאנל הצד: "הנתונים שנקלטו עד כה" */
 [data-testid="stSidebarContent"] { padding-top: 6.4rem; }
@@ -272,9 +275,11 @@ def topbar(pages: list, current, user: dict | None = None) -> None:
                              unsafe_allow_html=True)
         with nav:
             with_logout = bool(user and user.get("role") != "both")
+            if not pages and not with_logout:        # מסך הכניסה: אותו באנר, בלי כפתורי ניווט
+                return
             columns = st.columns(len(pages) + (1 if with_logout else 0))
             for column, page in zip(columns, pages):
-                if page.title == current.title:
+                if current is not None and page.title == current.title:
                     column.markdown(f"<div class='nav-pill active'>{page.icon} {html.escape(page.title)}</div>",
                                     unsafe_allow_html=True)
                 else:
@@ -463,11 +468,7 @@ def render_login() -> None:
     """מסך כניסה (שם משתמש וסיסמה): באנר, כרטיס עם הטופס ותמונה. אחרי כניסה מוצלחת המשתמש נשמר בסשן ובעוגייה."""
     import auth
     import db
-    st.markdown("<style>[data-testid='stSidebar'], [data-testid='stSidebarCollapsedControl'] { display: none; } "
-                ".block-container { padding-top: 2rem; }</style>", unsafe_allow_html=True)
-    st.markdown("<div class='login-hero'><div class='t'>🚗 יועץ הרכב של שטראוס</div>"
-                "<div class='s'>מה יקרה לנטו שלי אם אחליף רכב, אעבור לרכב חשמלי או אוותר על הרכב?</div></div>",
-                unsafe_allow_html=True)
+    st.markdown("<style>[data-testid='stSidebar'], [data-testid='stSidebarCollapsedControl'] { display: none; }</style>", unsafe_allow_html=True)
     form_col, image_col = st.columns([1, 1], gap="large", vertical_alignment="center")
     with form_col:
         with st.container(key="logincard"):

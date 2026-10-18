@@ -40,6 +40,7 @@ load_users()
 user = ui.current_user()
 if user is None:                 # לא מחוברים: רק מסך כניסה
     ui.setup_page()
+    ui.topbar([], None)          # אותו באנר כמו באתר, בלי כפתורי ניווט
     if not os.environ.get("AUTH_USERS"):
         st.error("לא הוגדרו משתמשים (AUTH_USERS), ולכן אי אפשר להיכנס. יש לפנות למי שהתקין את המערכת.")
     ui.render_login()
