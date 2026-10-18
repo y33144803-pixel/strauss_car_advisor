@@ -43,7 +43,7 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS users (
                 username TEXT PRIMARY KEY,
                 display_name TEXT NOT NULL,
-                role TEXT NOT NULL,                    -- employee / rep
+                role TEXT NOT NULL,                    -- employee / rep / admin
                 password_hash TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 origin_username TEXT                   -- השם שהוגדר ב-AUTH_USERS (נשמר גם אחרי החלפת שם משתמש)
@@ -158,6 +158,69 @@ def rename_user(old: str, new: str) -> bool:
     return True
 
 
+def list_users() -> list[dict]:
+    """כל המשתמשים (בלי הגיבוב), לפי תפקיד ושם - למסך הניהול."""
+    init_db()
+    with closing(_connect()) as conn:
+        rows = conn.execute("""SELECT u.username, u.display_name, u.role, u.created_at,
+                                      (SELECT COUNT(*) FROM sessions s WHERE s.username = u.username) AS sessions
+                               FROM users u ORDER BY u.role, u.username""").fetchall()
+    return [dict(row) for row in rows]
+
+
+def import_users(users: list[dict]) -> int:
+    """טוען משתמשים מגיבוי (כולל הגיבוב של הסיסמה). משתמש שכבר קיים לא נדרס. מחזיר כמה נוספו."""
+    init_db()
+    added = 0
+    with closing(_connect()) as conn, conn:
+        for u in users:
+            if conn.execute("SELECT 1 FROM users WHERE username = ? OR origin_username = ?",
+                            (u["username"], u.get("origin_username") or u["username"])).fetchone():
+                continue
+            conn.execute("""INSERT INTO users (username, display_name, role, password_hash, created_at, origin_username)
+                            VALUES (?, ?, ?, ?, ?, ?)""",
+                         (u["username"], u["display_name"], u["role"], u["password_hash"],
+                          u.get("created_at") or _now(), u.get("origin_username") or u["username"]))
+            added += 1
+    return added
+
+
+def export_users() -> list[dict]:
+    """כל המשתמשים כולל הגיבוב של הסיסמה (לגיבוי). שיחות לא נכללות."""
+    init_db()
+    with closing(_connect()) as conn:
+        rows = conn.execute("""SELECT username, display_name, role, password_hash, created_at, origin_username
+                               FROM users ORDER BY created_at, username""").fetchall()
+    return [dict(row) for row in rows]
+
+
+def create_user(username: str, display_name: str, role: str, password_hash: str) -> bool:
+    """יוצר משתמש חדש. False אם שם המשתמש כבר תפוס (בלי הבחנה בין אותיות גדולות לקטנות)."""
+    init_db()
+    with closing(_connect()) as conn, conn:
+        if conn.execute("SELECT 1 FROM users WHERE username = ? COLLATE NOCASE OR origin_username = ? COLLATE NOCASE",
+                        (username, username)).fetchone():
+            return False
+        conn.execute("""INSERT INTO users (username, display_name, role, password_hash, created_at, origin_username)
+                        VALUES (?, ?, ?, ?, ?, ?)""", (username, display_name, role, password_hash, _now(), username))
+    return True
+
+
+def delete_user(username: str) -> bool:
+    """מוחק משתמש ואת אסימוני ההתחברות שלו. השיחות שלו נשארות (נראות למנהל)."""
+    init_db()
+    with closing(_connect()) as conn, conn:
+        conn.execute("DELETE FROM auth_tokens WHERE username = ?", (username,))
+        return conn.execute("DELETE FROM users WHERE username = ?", (username,)).rowcount > 0
+
+
+def clear_tokens(username: str) -> None:
+    """מנתק את המשתמש מכל המכשירים (למשל אחרי איפוס סיסמה על ידי מנהל)."""
+    init_db()
+    with closing(_connect()) as conn, conn:
+        conn.execute("DELETE FROM auth_tokens WHERE username = ?", (username,))
+
+
 def set_password_hash(username: str, password_hash: str) -> None:
     init_db()
     with closing(_connect()) as conn, conn:
@@ -232,6 +295,34 @@ def list_user_sessions(username: str) -> list[dict]:
                          "updated_at": row["updated_at"], "preview": first_user[:80],
                          "title": (row["title"] or "").strip() or first_user[:40],
                          "messages": sum(1 for m in messages if m["role"] == "user")})
+    return sessions
+
+
+def list_all_sessions() -> list[dict]:
+    """כל השיחות של כל המשתמשים (לצפייה בלבד, למנהל), מהאחרונה לראשונה. שיחה בלי הודעות של העובד לא נכללת.
+    לכל שיחה: שם תצוגה של הבעלים, וכמה שאלות הועברו בה לנציג (rep_total) וכמה מהן עדיין פתוחות (rep_open)."""
+    init_db()
+    with closing(_connect()) as conn:
+        rows = conn.execute("""SELECT s.session_id, s.username, s.messages_json, s.created_at, s.updated_at, s.title,
+                                      u.display_name,
+                                      (SELECT COUNT(*) FROM rep_questions q WHERE q.session_id = s.session_id
+                                         AND q.status != 'cancelled') AS rep_total,
+                                      (SELECT COUNT(*) FROM rep_questions q WHERE q.session_id = s.session_id
+                                         AND q.status = 'open') AS rep_open
+                               FROM sessions s LEFT JOIN users u ON u.username = s.username
+                               ORDER BY s.updated_at DESC""").fetchall()
+    sessions = []
+    for row in rows:
+        messages = json.loads(row["messages_json"])
+        first_user = next((m["content"] for m in messages if m["role"] == "user"), None)
+        if first_user is None:
+            continue
+        sessions.append({"session_id": row["session_id"], "username": row["username"] or "(ללא משתמש)",
+                         "display_name": row["display_name"] or row["username"] or "?",
+                         "created_at": row["created_at"], "updated_at": row["updated_at"],
+                         "title": (row["title"] or "").strip() or first_user[:40],
+                         "messages": sum(1 for m in messages if m["role"] == "user"),
+                         "rep_total": row["rep_total"], "rep_open": row["rep_open"]})
     return sessions
 
 

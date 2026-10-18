@@ -149,3 +149,62 @@ def test_rename_and_delete_session_only_by_owner():
     assert db.delete_session("s1", "dana") is True
     assert not db.session_exists("s1") and db.list_user_sessions("dana") == []
     assert db.list_questions("open") == []                                              # השאלה לנציג בוטלה
+
+
+def test_admin_creates_users_and_rules_are_enforced():
+    auth.create_user("newrep", "secret-1", "rep", "נציג חדש")
+    assert auth.authenticate("newrep", "secret-1")["role"] == "rep"
+    for args in (("newrep", "secret-2", "rep", "x"), ("NEWREP", "secret-2", "rep", "x"),
+                 ("ab", "secret-2", "rep", "x"), ("okname", "123", "rep", "x"),
+                 ("okname", "secret-2", "boss", "x"), ("okname", "secret-2", "rep", " ")):
+        with pytest.raises(auth.LoginError):
+            auth.create_user(*args)
+
+
+def test_admin_reset_password_logs_user_out_and_delete_guards():
+    auth.create_user("boss", "secret-1", "admin", "מנהל")
+    auth.create_user("emp", "secret-1", "employee", "עובד")
+    token = db.create_token("emp")
+    auth.reset_password("emp", "brand-new-1")
+    assert db.user_for_token(token) is None
+    assert auth.authenticate("emp", "brand-new-1")
+    with pytest.raises(auth.LoginError):
+        auth.delete_user("boss", "boss")              # לא מוחקים את עצמך
+    with pytest.raises(auth.LoginError):
+        auth.delete_user("emp", "boss")               # המנהל האחרון
+    auth.delete_user("boss", "emp")
+    assert db.get_user("emp") is None
+
+
+def test_admin_sees_all_sessions():
+    for user in ("alice", "bobby"):
+        auth.create_user(user, "secret-1", "employee", user)
+        db.claim_session(f"s-{user}", user)
+        db.save_messages(f"s-{user}", [{"role": "user", "content": f"שלום מ-{user}"}])
+    assert {s["username"] for s in db.list_all_sessions()} == {"alice", "bobby"}
+
+
+def test_backup_roundtrip_restores_users_with_passwords(tmp_path, monkeypatch):
+    auth.create_user("carol", "secret-1", "rep", "קרול")
+    text = auth.export_users_json()
+    assert "secret-1" not in text                      # רק גיבוב, לא סיסמה גלויה
+    monkeypatch.setenv("STRAUSS_DB_PATH", str(tmp_path / "fresh.db"))      # שרת חדש עם מסד ריק
+    assert db.get_user("carol") is None
+    assert auth.import_users_json(text) == 1
+    assert auth.authenticate("carol", "secret-1")["role"] == "rep"
+    assert auth.import_users_json(text) == 0           # שוב: לא נדרס ולא מוכפל
+
+
+def test_bad_backup_is_rejected_and_startup_loads_file(tmp_path, monkeypatch):
+    for bad in ("not json", '{"users": [{"username": "x"}]}', '{"users": [{"username": "abc", "display_name": "d", '
+                '"role": "root", "password_hash": "a$b$c"}]}'):
+        with pytest.raises(auth.LoginError):
+            auth.import_users_json(bad)
+    auth.create_user("dave", "secret-1", "employee", "דייב")
+    backup = tmp_path / "users_backup.json"
+    backup.write_text(auth.export_users_json(), encoding="utf-8")
+    monkeypatch.setattr(auth, "BACKUP_FILE", str(backup))
+    monkeypatch.setenv("STRAUSS_DB_PATH", str(tmp_path / "fresh2.db"))
+    monkeypatch.setenv("AUTH_USERS", "")
+    auth.seed_users()
+    assert auth.authenticate("dave", "secret-1")

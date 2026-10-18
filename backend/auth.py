@@ -4,12 +4,13 @@
 
     AUTH_USERS="dana:סיסמה1:employee:דנה כהן;moshe:סיסמה2:rep:משה לוי"
 
-כל רשומה: שם_משתמש:סיסמה:תפקיד:שם_תצוגה (מופרדות ב-; או בשורה חדשה). תפקיד: employee / rep.
+כל רשומה: שם_משתמש:סיסמה:תפקיד:שם_תצוגה (מופרדות ב-; או בשורה חדשה). תפקיד: employee / rep / admin.
 בסיסמה ובשם המשתמש אסור להשתמש ב-: וב-;.
 משתמש שכבר קיים במסד לא נדרס - כך שינוי סיסמה שבוצע באזור האישי נשמר (כל עוד המסד נשמר).
 """
 import hashlib
 import hmac
+import json
 import os
 import re
 import secrets
@@ -20,7 +21,8 @@ from dotenv import load_dotenv
 import db
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ROLES = ("employee", "rep")
+ROLES = ("employee", "rep", "admin")
+ROLE_LABELS = {"employee": "עובד", "rep": "נציג תחבורה", "admin": "מנהל"}
 MIN_PASSWORD_LENGTH = 6
 USERNAME_RE = re.compile(r"^[0-9A-Za-zא-ת._-]{3,30}$")      # אותיות (גם עבריות), ספרות, נקודה, קו תחתון ומקף
 MAX_FAILED_ATTEMPTS = 5
@@ -77,7 +79,7 @@ def parse_users(text: str) -> list[dict]:
 def seed_users() -> int:
     """טוען את המשתמשים מ-AUTH_USERS למסד (רק מי שעוד לא קיים). מחזיר כמה נוצרו."""
     load_dotenv(os.path.join(BASE_DIR, ".env"))
-    created = 0
+    created = load_backup()                      # קודם הגיבוי (כולל שינויי סיסמה), ואז AUTH_USERS למי שחסר
     for user in parse_users(os.environ.get("AUTH_USERS", "")):
         if db.create_user_if_missing(user["username"], user["display_name"], user["role"],
                                      hash_password(user["password"])):
@@ -139,3 +141,85 @@ def change_username(username: str, password: str, new_username: str) -> dict:
     if not db.rename_user(username, new_username):
         raise LoginError("שם המשתמש הזה כבר תפוס.")
     return {"username": new_username, "display_name": user["display_name"], "role": user["role"]}
+
+
+# ---------------------------------------------------------------- ניהול משתמשים (מנהל)
+
+def create_user(username: str, password: str, role: str, display_name: str) -> None:
+    """מוסיף משתמש חדש (עובד / נציג / מנהל). זורק LoginError עם הודעה בעברית."""
+    username = (username or "").strip()
+    display_name = (display_name or "").strip()
+    if role not in ROLES:
+        raise LoginError("תפקיד לא מוכר.")
+    if not USERNAME_RE.match(username):
+        raise LoginError("שם משתמש חייב להכיל 3 עד 30 תווים: אותיות, ספרות, נקודה, קו תחתון או מקף (בלי רווחים).")
+    if not display_name:
+        raise LoginError("יש להזין שם תצוגה.")
+    if len(password or "") < MIN_PASSWORD_LENGTH:
+        raise LoginError(f"הסיסמה קצרה מדי (לפחות {MIN_PASSWORD_LENGTH} תווים).")
+    if not db.create_user(username, display_name, role, hash_password(password)):
+        raise LoginError("שם המשתמש הזה כבר תפוס.")
+
+
+def reset_password(username: str, new_password: str) -> None:
+    """איפוס סיסמה על ידי מנהל (בלי הסיסמה הנוכחית). המשתמש מנותק מכל המכשירים."""
+    if not db.get_user(username):
+        raise LoginError("המשתמש לא נמצא.")
+    if len(new_password or "") < MIN_PASSWORD_LENGTH:
+        raise LoginError(f"הסיסמה קצרה מדי (לפחות {MIN_PASSWORD_LENGTH} תווים).")
+    db.set_password_hash(username, hash_password(new_password))
+    db.clear_tokens(username)
+
+
+def delete_user(acting_admin: str, username: str) -> None:
+    """מחיקת משתמש. אי אפשר למחוק את עצמך או את המנהל האחרון."""
+    if username == acting_admin:
+        raise LoginError("אי אפשר למחוק את המשתמש שלך.")
+    target = db.get_user(username)
+    if not target:
+        raise LoginError("המשתמש לא נמצא.")
+    if target["role"] == "admin" and sum(1 for u in db.list_users() if u["role"] == "admin") <= 1:
+        raise LoginError("אי אפשר למחוק את המנהל האחרון.")
+    db.delete_user(username)
+
+
+# ---------------------------------------------------------------- גיבוי ושחזור משתמשים
+
+BACKUP_FILE = os.path.join(BASE_DIR, "users_backup.json")
+_BACKUP_FIELDS = ("username", "display_name", "role", "password_hash")
+
+
+def export_users_json() -> str:
+    """כל המשתמשים כ-JSON (עם גיבוב הסיסמה, לא סיסמה גלויה). שיחות לא נכללות."""
+    return json.dumps({"users": db.export_users()}, ensure_ascii=False, indent=2)
+
+
+def import_users_json(text: str) -> int:
+    """טוען משתמשים מגיבוי. זורק LoginError אם הקובץ לא תקין. משתמש קיים לא נדרס. מחזיר כמה נוספו."""
+    try:
+        users = json.loads(text)["users"]
+        for u in users:
+            if not all(isinstance(u.get(f), str) and u[f] for f in _BACKUP_FIELDS) or u["role"] not in ROLES \
+                    or u["password_hash"].count("$") != 2:
+                raise ValueError
+    except (ValueError, KeyError, TypeError, AttributeError):
+        raise LoginError("קובץ הגיבוי לא תקין.") from None
+    return db.import_users(users)
+
+
+def load_backup() -> int:
+    """בעליית השרת: טוען משתמשים מ-users_backup.json (אם קיים) ומהמשתנה USERS_BACKUP_JSON (אם הוגדר).
+    כך משתמשים שנוספו במסך הניהול חוזרים אחרי פריסה מחודשת בענן. קובץ פגום מדלגים עליו ולא מפיל את השרת."""
+    added = 0
+    sources = []
+    if os.path.exists(BACKUP_FILE):
+        with open(BACKUP_FILE, encoding="utf-8") as handle:
+            sources.append(handle.read())
+    if os.environ.get("USERS_BACKUP_JSON", "").strip():
+        sources.append(os.environ["USERS_BACKUP_JSON"])
+    for text in sources:
+        try:
+            added += import_users_json(text)
+        except LoginError:
+            pass
+    return added

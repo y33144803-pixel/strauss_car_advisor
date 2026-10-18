@@ -72,10 +72,11 @@ def avatar_for(role: str) -> str | None:
     return BOT_AVATAR if role == "assistant" and os.path.exists(BOT_AVATAR) else None
 
 
-def user_avatar_css() -> str:
-    """CSS שמציג בעיגול של העובדת את האות הראשונה של שמה (במקום האייקון הכללי)."""
+def user_avatar_css(display_name: str | None = None) -> str:
+    """CSS שמציג בעיגול של המשתמש את האות הראשונה של שמו (במקום האייקון הכללי).
+    כברירת מחדל - המשתמש המחובר; מסך הניהול מעביר את שם בעל השיחה שנצפית."""
     user = st.session_state.get("user") or {}
-    name = (user.get("display_name") or "").strip()
+    name = (display_name or user.get("display_name") or "").strip()
     if not name:
         return ""
     letter = json.dumps(name[0], ensure_ascii=False)    # מחרוזת CSS בטוחה (בלי הימלטות JSON שאינה חוקית ב-CSS)
@@ -304,7 +305,8 @@ def topbar(pages: list, current, user: dict | None = None) -> None:
             if not pages:                            # מסך הכניסה והמשתמשים המחוברים: הבאנר בלי כפתורים
                 if user and user.get("role") != "both":      # (הגדרות ויציאה בסרגל הצד) - רק מי שמחובר
                     name = (user.get("display_name") or user["username"]).strip()
-                    role = "עובד" if user.get("role") == "employee" else "נציג תחבורה"
+                    import auth
+                    role = auth.ROLE_LABELS.get(user.get("role"), "")
                     st.markdown("<div style='display:flex; justify-content:flex-start; direction:ltr'>"
                                 "<div class='user-chip' style='direction:rtl'>"
                                 f"<span class='dot'>{html.escape(name[0])}</span>"
