@@ -49,6 +49,8 @@ def init_db() -> None:
                 origin_username TEXT                   -- השם שהוגדר ב-AUTH_USERS (נשמר גם אחרי החלפת שם משתמש)
             )""")
         user_columns = [row[1] for row in conn.execute("PRAGMA table_info(users)")]
+        if "consent_at" not in user_columns:          # אישור שמירת השיחות (נדרש פעם אחת מכל עובד)
+            conn.execute("ALTER TABLE users ADD COLUMN consent_at TEXT")
         if "origin_username" not in user_columns:
             conn.execute("ALTER TABLE users ADD COLUMN origin_username TEXT")
             conn.execute("UPDATE users SET origin_username = username WHERE origin_username IS NULL")
@@ -156,6 +158,19 @@ def rename_user(old: str, new: str) -> bool:
         conn.execute("UPDATE auth_tokens SET username = ? WHERE username = ?", (new, old))
         conn.execute("UPDATE sessions SET username = ? WHERE username = ?", (new, old))
     return True
+
+
+def has_consented(username: str) -> bool:
+    init_db()
+    with closing(_connect()) as conn:
+        row = conn.execute("SELECT consent_at FROM users WHERE username = ?", (username,)).fetchone()
+    return bool(row and row["consent_at"])
+
+
+def give_consent(username: str) -> None:
+    init_db()
+    with closing(_connect()) as conn, conn:
+        conn.execute("UPDATE users SET consent_at = ? WHERE username = ? AND consent_at IS NULL", (_now(), username))
 
 
 def list_users() -> list[dict]:

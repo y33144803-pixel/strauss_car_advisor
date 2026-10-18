@@ -9,11 +9,12 @@ from actions import pick_message, picker_state, recalculate, set_picker
 from agent import STATUS_ANALYZING, chat, check_representative_updates, friendly_error, pending_user_message, start_session
 from agent_tools import REP_FIELDS
 from ui import (CLOSE_PICKER, avatar_for, get_session_id, render_car_picker, render_comparison,
-                render_history_sidebar, render_state_card, require_role, show_markdown, typing_status_html)
+                render_history_sidebar, render_state_card, require_consent, require_role, show_markdown, typing_status_html)
 
 require_role("employee")                # רק עובדים (או התחברות כבויה בפיתוח מקומי)
 logger = logging.getLogger("strauss.employee")
 sid = get_session_id()
+require_consent()                       # אישור שמירת השיחות, פעם אחת לכל עובד
 CHAT_HEIGHT = 480
 CHAT_HEIGHT_WITH_PICKER = 250
 
@@ -119,7 +120,6 @@ prompt = st.chat_input("כתוב/י כאן...")
 text = prompt or picked_text
 messages = start_session(sid)
 with chat_box:
-    st.caption("🔒 השיחות נשמרות לצורך מעקב ושיפור השירות. בהמשך השיחה את/ה מאשר/ת את שמירתן.")
     last_comparison = max((i for i, m in enumerate(messages)
                            if m["role"] == "assistant"
                            and ("נטו היום" in m["content"] or m["content"].startswith("**השוואה"))),

@@ -20,6 +20,7 @@ def temp_db(tmp_path, monkeypatch):
 def signed_in(at: AppTest, role: str = "both", name: str = "נועה לוי") -> AppTest:
     """מדמה משתמש מחובר (בהרצה ישירה של מסך, בלי app.py שמבצע את הכניסה)."""
     at.session_state["user"] = {"username": "tester", "display_name": name, "role": role}
+    at.session_state["chat_consent"] = True          # (ללא התחברות אמיתית האישור נשמר בהפעלה)
     return at
 
 
@@ -372,10 +373,13 @@ def auth_on(monkeypatch):
     st.cache_resource.clear()                     # טעינת המשתמשים (cache_resource) צריכה לרוץ מחדש לכל מסד בדיקה
 
 
-def app_with_login(username=None, password=None) -> AppTest:
+def app_with_login(username=None, password=None, consent=True) -> AppTest:
     at = AppTest.from_file(APP, default_timeout=30)
     at.query_params["sid"] = SID
     at.run()
+    import db
+    if consent:
+        db.give_consent("dana")                       # רוב הבדיקות מניחות עובד שכבר אישר את שמירת השיחות
     if username:
         at.text_input[0].set_value(username)
         at.text_input[1].set_value(password)
@@ -522,26 +526,25 @@ def logged_in_dana(extra_sessions=True) -> AppTest:
     return at
 
 
-def test_banner_has_no_navigation_or_logout_buttons_for_logged_in_users(auth_on):
+def test_banner_name_opens_a_menu_with_account_and_logout(auth_on):
     at = logged_in_dana(extra_sessions=False)
-    labels = [b.label for b in at.button]
-    assert not any(label in ("מסך עובד", "מסך נציג", "האזור שלי") for label in labels)
-    topbar_buttons = [b for b in at.button if b.key in ("logout_button",)]
-    assert not topbar_buttons                                          # "יציאה" כבר לא בבאנר
+    keys = [b.key for b in at.button]
+    assert "menu_account" in keys and "menu_logout" in keys and "menu_main" in keys
+    assert not any(b.label in ("מסך עובד", "מסך נציג", "האזור שלי") for b in at.button)   # אין כפתורי ניווט בבאנר
 
 
-def test_sidebar_has_new_chat_history_settings_and_logout(auth_on):
+def test_sidebar_has_new_chat_and_history_only(auth_on):
     at = logged_in_dana()
     sidebar_labels = [b.label for b in at.sidebar.button]
     assert "שיחה חדשה" in sidebar_labels
     assert "מעבר לרכב חשמלי" in sidebar_labels and "מה אם אוותר על הרכב" in sidebar_labels
-    assert "הגדרות" in sidebar_labels and "יציאה" in sidebar_labels
+    assert "הגדרות" not in sidebar_labels and "יציאה" not in sidebar_labels      # עברו לתפריט בבאנר
     assert not any("הנתונים שנקלטו עד כה" in m.value for m in at.sidebar.markdown)   # הנתונים כבר לא בסרגל הצד
 
 
-def test_logout_icon_returns_to_login_screen(auth_on):
+def test_logout_from_banner_menu_returns_to_login_screen(auth_on):
     at = logged_in_dana(extra_sessions=False)
-    at.sidebar.button(key="logout_icon").click().run()
+    at.button(key="menu_logout").click().run()
     assert any("כניסה למערכת" in m.value for m in at.markdown) and not at.chat_input
 
 
@@ -630,6 +633,19 @@ def test_admin_forms_open_by_buttons():
     assert any(b.label == "ביטול" for b in at.button)
 
 
-def test_chat_shows_conversation_saving_notice():
-    at = employee_app()
-    assert any("השיחות נשמרות לצורך מעקב ושיפור השירות" in c.value for c in at.caption)
+def test_employee_must_approve_saving_before_chatting_and_approves_once(auth_on):
+    import db
+    at = app_with_login("dana", "secret-1", consent=False)
+    assert not at.chat_input and any(b.key == "consent_button" for b in at.button)
+    assert not db.has_consented("dana")
+    at.button(key="consent_button").click().run()
+    assert db.has_consented("dana") and at.chat_input
+    assert not any(b.key == "consent_button" for b in at.button)
+
+
+def test_rep_and_admin_have_no_sidebar_and_no_consent(auth_on):
+    import auth
+    auth.create_user("boss", "secret-9", "admin", "מנהל")
+    at = app_with_login("boss", "secret-9")
+    assert any("stSidebar" in m.value for m in at.markdown)           # הסרגל מוסתר ב-CSS
+    assert not any(b.key == "consent_button" for b in at.button)

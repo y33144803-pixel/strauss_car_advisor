@@ -50,14 +50,13 @@ if user is None:                 # לא מחוברים: רק מסך כניסה
     st.stop()
 
 pages = PAGES_BY_ROLE.get(user["role"], [account_page])
-# הניווט של Streamlit מוסתר. בבאנר אין כפתורי ניווט למשתמשים מחוברים (הגדרות ויציאה בסרגל הצד);
+# הניווט של Streamlit מוסתר. בבאנר אין כפתורי ניווט למשתמשים מחוברים: לחיצה על השם פותחת תפריט (אזור אישי ויציאה);
 # רק בפיתוח מקומי בלי התחברות ("both") יש בבאנר כפתורים למעבר בין מסך עובד למסך נציג
 current_page = st.navigation(pages, position="hidden")
 st.session_state["_page"] = "employee" if current_page.title == employee_page.title else "other"
 ui.setup_page()
 ui.topbar([employee_page, representative_page] if user["role"] == "both" else [], current_page, user)
-if user["role"] == "admin":                  # מנהל: קישור בסרגל הצד בין מסך הניהול לאזור האישי
-    with st.sidebar:
-        st.page_link(admin_page, label="ניהול משתמשים ושיחות", icon=":material/admin_panel_settings:")
-ui.render_sidebar_footer()
+if user["role"] in ("rep", "admin"):         # נציג ומנהל: בלי סרגל צד (התפריט בבאנר, לחיצה על השם)
+    st.markdown("<style>[data-testid='stSidebar'], [data-testid='stSidebarCollapsedControl'], "
+                "[data-testid='collapsedControl'] { display: none !important; }</style>", unsafe_allow_html=True)
 current_page.run()

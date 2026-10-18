@@ -120,6 +120,12 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-
                  box-shadow: 0 6px 18px rgba(80,20,110,.35); direction: rtl; }
 .st-key-topbar img { border: 3px solid rgba(255,255,255,.65); box-shadow: 0 3px 10px rgba(0,0,0,.25); }
 .st-key-topbar .bar-title { text-shadow: 0 1px 3px rgba(0,0,0,.25); }
+.st-key-user-menu { direction: ltr; display: flex; justify-content: flex-start; }
+.st-key-user-menu [data-testid="stPopoverButton"] { background: transparent !important; border: 0 !important; box-shadow: none !important; color: #fff;
+                                                       font-weight: 700; padding: 4px 10px 4px 4px; }
+.st-key-user-menu [data-testid="stPopoverButton"]:hover { background: rgba(255,255,255,.18) !important; }
+.st-key-user-menu [data-testid="stPopoverButton"] * { color: #fff; }
+.st-key-user-menu [data-testid="stPopoverButton"] div[aria-hidden="true"] { display: none; }
 .st-key-topbar .user-chip { display: inline-flex; align-items: center; gap: 10px; }
 .st-key-topbar .user-chip .dot { width: 34px; height: 34px; border-radius: 50%; background: #fff; color: var(--primary);
                                  display: inline-flex; align-items: center; justify-content: center; font-weight: 800;
@@ -196,8 +202,6 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 [class*="st-key-chatrow_a_"] [data-testid="stPopover"] button, [class*="st-key-chatrow_a_"] [data-testid="stPopover"] button * { color: #fff; }
 [class*="st-key-chatrow_"] [data-testid="stPopover"] button div[aria-hidden="true"] { display: none; }
 .st-key-chat-list button p { padding-left: 34px; }
-[data-testid="stSidebarUserContent"] > div > [data-testid="stVerticalBlock"] { min-height: calc(100vh - 7rem); }
-div:has(> .st-key-sidebar-footer) { order: 999; margin-top: auto; }
 
 /* פאנל הצד: "הנתונים שנקלטו עד כה" */
 [data-testid="stSidebarContent"] { padding-top: 6.4rem; }
@@ -286,6 +290,31 @@ def setup_page() -> None:
     st.html(f"<script>{COPY_BUTTON_JS}</script>", unsafe_allow_javascript=True)   # כפתור "העתקה" בכל הודעה בשיחה
 
 
+MAIN_VIEW_BY_ROLE = {"employee": ("views/employee.py", "השיחה שלי"), "rep": ("views/representative.py", "מסך נציג"),
+                     "admin": ("views/admin.py", "מסך ניהול")}
+
+
+def render_user_menu(user: dict) -> None:
+    """שם המשתמש בבאנר (עם האות הראשונה בעיגול). לחיצה פותחת תפריט: המסך הראשי, האזור האישי ויציאה."""
+    import auth
+    name = (user.get("display_name") or user["username"]).strip()
+    letter = json.dumps(name[0], ensure_ascii=False)
+    st.markdown("<style>.st-key-user-menu button::before { content: " + letter + "; display: inline-flex; "
+                "align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; "
+                "background: #fff; color: var(--primary); font-weight: 800; font-size: 1.1rem; margin-inline-end: 10px; }"
+                "</style>", unsafe_allow_html=True)
+    with st.container(key="user-menu"):
+        with st.popover(f"שלום, {name}"):
+            st.caption(auth.ROLE_LABELS.get(user.get("role"), ""))
+            main = MAIN_VIEW_BY_ROLE.get(user.get("role"))
+            if main and st.button(main[1], key="menu_main", icon=":material/home:", use_container_width=True):
+                st.switch_page(main[0])
+            if st.button("האזור האישי", key="menu_account", icon=":material/settings:", use_container_width=True):
+                st.switch_page("views/account.py")
+            if st.button("יציאה", key="menu_logout", icon=":material/logout:", use_container_width=True):
+                logout()
+
+
 def topbar(pages: list, current, user: dict | None = None) -> None:
     """הבאנר העליון: קבוע בראש המסך תמיד, וכפתורי הניווט עליו (רק המסכים המותרים לתפקיד המשתמש).
     pages - דפי st.navigation המותרים; current - הדף הפעיל (מסומן בלבן, ולא כקישור).
@@ -302,17 +331,9 @@ def topbar(pages: list, current, user: dict | None = None) -> None:
             tagline.markdown("<div class='bar-title'>היועץ שלך</div><div class='bar-sub'>שואלים אותי הכול על הנטו</div>",
                              unsafe_allow_html=True)
         with nav:
-            if not pages:                            # מסך הכניסה והמשתמשים המחוברים: הבאנר בלי כפתורים
-                if user and user.get("role") != "both":      # (הגדרות ויציאה בסרגל הצד) - רק מי שמחובר
-                    name = (user.get("display_name") or user["username"]).strip()
-                    import auth
-                    role = auth.ROLE_LABELS.get(user.get("role"), "")
-                    st.markdown("<div style='display:flex; justify-content:flex-start; direction:ltr'>"
-                                "<div class='user-chip' style='direction:rtl'>"
-                                f"<span class='dot'>{html.escape(name[0])}</span>"
-                                f"<span class='who'>שלום, {html.escape(name)}"
-                                f"<br><span class='role'>{role}</span></span></div></div>",
-                                unsafe_allow_html=True)
+            if not pages:                            # מסך הכניסה והמשתמשים המחוברים: הבאנר בלי כפתורי ניווט
+                if user and user.get("role") != "both":      # שם המשתמש בבאנר פותח תפריט: האזור האישי ויציאה
+                    render_user_menu(user)
                 return
             columns = st.columns(len(pages))
             for column, page in zip(columns, pages):
@@ -408,6 +429,26 @@ def _owner_for_sessions() -> str | None:
     """שם המשתמש שאליו שייכות השיחות, או None כשההתחברות כבויה (פיתוח מקומי)."""
     user = st.session_state.get("user")
     return user["username"] if user and user.get("role") != "both" else None
+
+
+def require_consent() -> None:
+    """אישור שמירת השיחות: מוצג לעובד פעם אחת, ובלעדיו אין גישה לשיחה. נשמר למשתמש במסד
+    (בפיתוח מקומי בלי התחברות - לאורך ההפעלה בלבד)."""
+    import db
+    owner = _owner_for_sessions()
+    if (db.has_consented(owner) if owner else st.session_state.get("chat_consent")):
+        return
+    with st.container(key="consent-card", border=True):
+        st.markdown("#### לפני שמתחילים")
+        st.write("השיחות נשמרות לצורך מעקב ושיפור השירות, וגורמים מורשים בארגון (כמו מנהל המערכת) יכולים לצפות בהן. "
+                 "להמשך השימוש נדרש אישור.")
+        if st.button("אני מאשר/ת", key="consent_button", type="primary"):
+            if owner:
+                db.give_consent(owner)
+            else:
+                st.session_state["chat_consent"] = True
+            st.rerun()
+    st.stop()
 
 
 def get_session_id() -> str:
@@ -592,22 +633,6 @@ def render_history_sidebar(current_sid: str | None) -> None:
                                      use_container_width=True):
                             st.session_state["confirm_delete"] = session_id
                             st.rerun()
-
-
-def render_sidebar_footer() -> None:
-    """בתחתית סרגל הצד: איקון הגדרות (האזור האישי) ואיקון יציאה. נקרא פעם אחת ב-app.py; CSS מציב אותו למטה."""
-    user = st.session_state.get("user") or {}
-    if user.get("role") == "both":                  # פיתוח מקומי בלי התחברות: אין הגדרות או יציאה
-        return
-    with st.sidebar:
-        with st.container(key="sidebar-footer"):
-            settings, leave = st.columns(2)
-            if settings.button("הגדרות", icon=":material/settings:", key="settings_button", help="הגדרות",
-                               use_container_width=True):
-                st.switch_page("views/account.py")
-            if leave.button("יציאה", icon=":material/logout:", key="logout_icon", help="יציאה",
-                            use_container_width=True):
-                logout()
 
 
 def logout() -> None:
