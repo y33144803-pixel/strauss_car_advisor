@@ -132,3 +132,20 @@ def test_change_username_requires_password_and_unique_name():
     with pytest.raises(auth.LoginError):
         auth.change_username("dana", "secret-1", "dana")                     # זהה לנוכחי
     assert auth.change_username("dana", "secret-1", "דנה_כ")["username"] == "דנה_כ"   # גם עברית
+
+
+def test_rename_and_delete_session_only_by_owner():
+    auth.seed_users()
+    db.claim_session("s1", "dana")
+    db.save_messages("s1", [{"role": "user", "content": "שאלה ארוכה על הנטו שלי אחרי החלפת רכב"}])
+    assert db.list_user_sessions("dana")[0]["title"].startswith("שאלה ארוכה")          # שם אוטומטי
+    assert db.rename_session("s1", "moshe", "פריצה") is False                           # לא הבעלים
+    assert db.rename_session("s1", "dana", "  הרכב החדש  ") is True
+    assert db.list_user_sessions("dana")[0]["title"] == "הרכב החדש"
+    db.rename_session("s1", "dana", "")                                                 # ריק = חזרה לשם האוטומטי
+    assert db.list_user_sessions("dana")[0]["title"].startswith("שאלה ארוכה")
+    assert db.delete_session("s1", "moshe") is False and db.session_exists("s1")
+    db.create_question("s1", "new_participation", "חסר", "סיכום")
+    assert db.delete_session("s1", "dana") is True
+    assert not db.session_exists("s1") and db.list_user_sessions("dana") == []
+    assert db.list_questions("open") == []                                              # השאלה לנציג בוטלה

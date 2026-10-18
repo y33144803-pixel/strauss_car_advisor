@@ -23,11 +23,13 @@ def signed_in(at: AppTest, role: str = "both", name: str = "נועה לוי") ->
     return at
 
 
-def employee_app(show_comparison: bool = False) -> AppTest:
+def employee_app(show_comparison: bool = False, show_data: bool = False) -> AppTest:
     at = signed_in(AppTest.from_file(os.path.join(VIEWS, "employee.py"), default_timeout=30))
     at.query_params["sid"] = SID
     if show_comparison:
         at.session_state["show_comparison"] = True       # העובדת סימנה "הצג השוואה מפורטת בצד"
+    if show_data:
+        at.session_state["show_data"] = True             # העובדת סימנה "הצג את הנתונים שנקלטו בצד"
     return at.run()
 
 
@@ -46,7 +48,8 @@ def test_new_session_shows_greeting_and_no_comparison():
     assert not at.exception
     assert any("שלום" in m.value for m in at.markdown)
     assert not any("ההשוואה תופיע כאן" in m.value for m in at.markdown)   # בלי תוצאה - אין פאנל השוואה ריק
-    assert not at.toggle and not at.subheader                              # וגם לא כפתור סימון
+    assert [t.label for t in at.toggle] == ["הצג את הנתונים שנקלטו בצד"]    # בלי תוצאה: רק מתג הנתונים
+    assert not at.subheader                                                # ובלי פאנל צד כשהמתג כבוי
     assert at.query_params["sid"] == [SID] or at.query_params["sid"] == SID
 
 
@@ -250,25 +253,26 @@ def test_picker_closes_after_choice_and_can_be_reopened():
 # ------------------------------------------------------------ פאנל הצד: הנתונים שנקלטו עד כה
 
 def sidebar_text(at) -> str:
-    return " ".join(m.value for m in at.sidebar.markdown)
+    """הנתונים שנקלטו מוצגים בעמודת הצד (כשהעובדת מסמנת), לא בסרגל הצד."""
+    return " ".join(m.value for m in at.markdown)
 
 
 def test_state_card_starts_empty_and_fills_in_as_data_arrives():
-    at = employee_app()
+    at = employee_app(show_data=True)
     text = sidebar_text(at)
     assert "הנתונים שנקלטו עד כה" in text
     empty_before = text.count("טרם הוזן")
     assert empty_before >= 9                                              # כל השדות ריקים בתחילת השיחה
 
     update_employee_data(SID, eligibility_group="ג", base_salary=14200, pension_rate=6)
-    text = sidebar_text(employee_app())
+    text = sidebar_text(employee_app(show_data=True))
     assert "14,200 ₪" in text and "6%" in text and "ג" in text
     assert text.count("טרם הוזן") == empty_before - 3                     # שלושה שדות התמלאו
 
 
 def test_state_card_shows_current_and_target_car():
     fill_to_comparison()
-    text = sidebar_text(employee_app())
+    text = sidebar_text(employee_app(show_data=True))
     assert "COROLLA CROSS (2025)" in text and "ATTO 3 (2025)" in text
     assert "טרם הוזן" not in text.replace("עמלות", "")                    # הכול מולא אחרי חישוב
 
@@ -503,3 +507,70 @@ def test_prefill_stops_when_credentials_were_changed(auth_on, monkeypatch):
     auth.change_password("dana", "secret-1", "changed-pw")           # הסיסמה כבר לא כמו בהגדרות השרת
     at2 = app_with_login()
     assert at2.text_input[0].value == "" and at2.text_input[1].value == ""
+
+
+# ------------------------------------------------------------------ סרגל צד: היסטוריה, הגדרות ויציאה
+
+def logged_in_dana(extra_sessions=True) -> AppTest:
+    import db
+    at = app_with_login("dana", "secret-1")
+    if extra_sessions:
+        for sid, text in (("h1", "מעבר לרכב חשמלי"), ("h2", "מה אם אוותר על הרכב")):
+            db.claim_session(sid, "dana")
+            db.save_messages(sid, [{"role": "assistant", "content": "שלום"}, {"role": "user", "content": text}])
+        at.run()
+    return at
+
+
+def test_banner_has_no_navigation_or_logout_buttons_for_logged_in_users(auth_on):
+    at = logged_in_dana(extra_sessions=False)
+    labels = [b.label for b in at.button]
+    assert not any(label in ("מסך עובד", "מסך נציג", "האזור שלי") for label in labels)
+    topbar_buttons = [b for b in at.button if b.key in ("logout_button",)]
+    assert not topbar_buttons                                          # "יציאה" כבר לא בבאנר
+
+
+def test_sidebar_has_new_chat_history_settings_and_logout(auth_on):
+    at = logged_in_dana()
+    sidebar_labels = [b.label for b in at.sidebar.button]
+    assert "שיחה חדשה" in sidebar_labels
+    assert "מעבר לרכב חשמלי" in sidebar_labels and "מה אם אוותר על הרכב" in sidebar_labels
+    assert "הגדרות" in sidebar_labels and "יציאה" in sidebar_labels
+    assert not any("הנתונים שנקלטו עד כה" in m.value for m in at.sidebar.markdown)   # הנתונים כבר לא בסרגל הצד
+
+
+def test_logout_icon_returns_to_login_screen(auth_on):
+    at = logged_in_dana(extra_sessions=False)
+    at.sidebar.button(key="logout_icon").click().run()
+    assert any("כניסה למערכת" in m.value for m in at.markdown) and not at.chat_input
+
+
+def test_open_rename_and_delete_conversations_from_sidebar(auth_on):
+    import db
+    at = logged_in_dana()
+    at.sidebar.button(key="open_h1").click().run()                    # פתיחת שיחה קודמת
+    assert at.session_state["sid"] == "h1"
+    assert any("מעבר לרכב חשמלי" in m.value for m in at.markdown)
+
+    at.sidebar.text_input(key="title_h1").set_value("הרכב החשמלי")
+    at.sidebar.button(key="save_h1").click().run()                    # שינוי שם
+    assert db.list_user_sessions("dana")[0]["title"] == "הרכב החשמלי" or \
+        "הרכב החשמלי" in [h["title"] for h in db.list_user_sessions("dana")]
+    assert "הרכב החשמלי" in [b.label for b in at.sidebar.button]
+
+    at.sidebar.button(key="delete_h1").click().run()                  # מחיקה: קודם אישור
+    assert db.session_exists("h1")
+    assert any("למחוק את השיחה" in w.value for w in at.sidebar.warning)
+    at.sidebar.button(key="confirm_delete_yes").click().run()
+    assert not db.session_exists("h1")
+    assert "הרכב החשמלי" not in [b.label for b in at.sidebar.button]
+    assert at.session_state["sid"] != "h1"                            # נמחקה השיחה הפתוחה - נפתחת חדשה
+
+
+def test_cancel_keeps_the_conversation(auth_on):
+    import db
+    at = logged_in_dana()
+    at.sidebar.button(key="delete_h2").click().run()
+    at.sidebar.button(key="confirm_delete_no").click().run()
+    assert db.session_exists("h2")
+    assert not at.sidebar.warning

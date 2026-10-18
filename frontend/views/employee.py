@@ -1,4 +1,5 @@
-"""מסך עובד: שיחה עם הבוט (עם בורר רכבים מעל תיבת הקלט), פאנל "הנתונים שנקלטו" בצד, והשוואה."""
+"""מסך עובד: שיחה עם הבוט (עם בורר רכבים מעל תיבת הקלט). הנתונים שנקלטו וההשוואה - בצד, לפי בקשה.
+בסרגל הצד: שיחה חדשה והיסטוריית השיחות (שינוי שם ומחיקה)."""
 import logging
 
 import streamlit as st
@@ -7,8 +8,8 @@ import db
 from actions import pick_message, picker_state, recalculate, set_picker
 from agent import STATUS_ANALYZING, chat, check_representative_updates, friendly_error, pending_user_message, start_session
 from agent_tools import REP_FIELDS
-from ui import (CLOSE_PICKER, avatar_for, get_session_id, new_session, render_car_picker,
-                render_comparison, render_state_card, require_role, show_markdown, typing_status_html)
+from ui import (CLOSE_PICKER, avatar_for, get_session_id, render_car_picker, render_comparison,
+                render_history_sidebar, render_state_card, require_role, show_markdown, typing_status_html)
 
 require_role("employee")                # רק עובדים (או התחברות כבויה בפיתוח מקומי)
 logger = logging.getLogger("strauss.employee")
@@ -18,22 +19,23 @@ CHAT_HEIGHT_WITH_PICKER = 250
 
 st.session_state.setdefault("picker_nonce", 0)
 
-# פאנל הצד: הנתונים שנקלטו. מצויר מחדש אחרי כל כלי שהסוכן מפעיל (on_step), כך שהוא מתמלא מול עיני העובד
-if st.sidebar.button("שיחה חדשה", use_container_width=True):
-    new_session()
-    st.rerun()
-sidebar_slot = st.sidebar.empty()
+render_history_sidebar(sid)             # שיחה חדשה + היסטוריית שיחות בסרגל הצד
 
-# השוואה מפורטת בצד: רק כשיש תוצאה, ורק אם העובד סימן. אחרת כל המסך הוא שיחה
-# (המתג עצמו מופיע בשיחה, מתחת להודעת ההשוואה האחרונה)
+# בצד (עמודה שמאלית), לפי בקשת העובד: "הנתונים שנקלטו" ו/או ההשוואה המפורטת. אחרת כל המסך הוא שיחה.
+# המתגים עצמם מופיעים בשיחה (המתג של ההשוואה - מתחת להודעת ההשוואה האחרונה)
 initial_state = db.load_state(sid)
 st.session_state.setdefault("show_comparison", False)
+st.session_state.setdefault("show_data", False)
 show_comparison = bool(initial_state.last_result and st.session_state["show_comparison"])
+show_data = bool(st.session_state["show_data"])
+side_open = show_comparison or show_data
+data_slot = None                         # נוצר בעמודת הצד; מצויר מחדש אחרי כל כלי כך שהוא מתמלא מול עיני העובד
 
 
-def draw_sidebar() -> None:
-    with sidebar_slot.container():
-        render_state_card(db.load_state(sid))
+def draw_state_card() -> None:
+    if data_slot is not None:
+        with data_slot.container():
+            render_state_card(db.load_state(sid))
 
 
 @st.fragment(run_every=5)
@@ -55,7 +57,7 @@ def run_turn(text: str | None) -> None:
 
         show_status(STATUS_ANALYZING)
         try:
-            chat(sid, text, on_step=lambda step: draw_sidebar(), on_status=show_status)
+            chat(sid, text, on_step=lambda step: draw_state_card(), on_status=show_status)
         except Exception as e:  # תקלה בשירות המודל לא אמורה להפיל את המסך
             logger.exception("תור השיחה נכשל (שיחה %s)", sid)
             st.session_state["chat_error"] = friendly_error(e)
@@ -65,13 +67,16 @@ def run_turn(text: str | None) -> None:
 
 
 watch_representative()
-draw_sidebar()
 
-if show_comparison:
+if side_open:
     chat_col, result_col = st.columns([3, 2], gap="medium")
+    if show_data:
+        with result_col:
+            data_slot = st.empty()
+        draw_state_card()
 else:
     chat_col, result_col = st.container(), None
-    # בלי השוואה בצד: תיבת הכתיבה ברוחב כל השיחה
+    # בלי עמודת צד: תיבת הכתיבה ברוחב כל השיחה
     st.markdown("<style>[data-testid='stBottomBlockContainer'] [data-testid='stChatInput'] { width: 100% !important; }"
                 "</style>", unsafe_allow_html=True)
 picker = picker_state(sid)
@@ -126,6 +131,7 @@ with chat_box:
         st.warning(st.session_state.get("chat_error") or "ההודעה האחרונה שלך עדיין לא נענתה.")
         if st.button("נסי שוב", type="primary"):
             run_turn(None)
+    st.toggle("הצג את הנתונים שנקלטו בצד", key="show_data")
 
 state = db.load_state(sid)
 with chat_box:
@@ -133,7 +139,7 @@ with chat_box:
         waiting = ", ".join(REP_FIELDS.get(f, f) for f in state.pending_questions)
         st.info(f"שלחתי שאלה לנציג התחבורה ואני ממתין לתשובה: {waiting}. הדף מתעדכן אוטומטית.")
 
-if result_col is not None:
+if show_comparison:
     with result_col:
         st.subheader("השוואה")
         render_comparison(state.last_result, stale=state.result_is_stale)

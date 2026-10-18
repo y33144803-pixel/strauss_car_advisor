@@ -1,30 +1,16 @@
-"""האזור האישי: היסטוריית השיחות של העובד, החלפת סיסמה ויציאה."""
-from datetime import datetime
-
+"""האזור האישי: החלפת שם משתמש וסיסמה ויציאה. היסטוריית השיחות נמצאת בסרגל הצד."""
 import streamlit as st
 
 import auth
 import db
-from ui import logout, require_role
+from ui import logout, render_history_sidebar, require_role
 
 user = require_role("employee", "rep")
 st.subheader(f"שלום {user['display_name']}")
 st.caption(f"שם משתמש: {user['username']} · תפקיד: {'עובד' if user['role'] == 'employee' else 'נציג תחבורה'}")
 
 if user["role"] == "employee":
-    st.markdown("#### השיחות שלי")
-    sessions = db.list_user_sessions(user["username"])
-    if not sessions:
-        st.caption("עוד אין שיחות קודמות. אחרי שתשוחחי עם היועץ הן יופיעו כאן.")
-    for item in sessions:
-        updated = datetime.fromisoformat(item["updated_at"]).strftime("%d/%m/%Y %H:%M")
-        text, action = st.columns([5, 1], vertical_alignment="center")
-        text.markdown(f"**{updated}** · {item['messages']} הודעות  \n{item['preview']}")
-        if action.button("פתיחה", key=f"open_{item['session_id']}", use_container_width=True):
-            st.session_state["sid"] = item["session_id"]
-            st.query_params["sid"] = item["session_id"]
-            st.switch_page("views/employee.py")
-    st.divider()
+    render_history_sidebar(st.session_state.get("sid"))     # היסטוריית השיחות (כולל שינוי שם ומחיקה) בסרגל הצד
 
 st.markdown("#### פרטי התחברות")
 st.session_state.setdefault("account_form", None)       # None / "username" / "password": רק טופס אחד פתוח, ורק אחרי לחיצה

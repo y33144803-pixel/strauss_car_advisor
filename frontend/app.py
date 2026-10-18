@@ -47,8 +47,11 @@ if user is None:                 # לא מחוברים: רק מסך כניסה
     st.stop()
 
 pages = PAGES_BY_ROLE.get(user["role"], [account_page])
-# הניווט של Streamlit מוסתר: הכפתורים נמצאים בבאנר הקבוע שלנו
+# הניווט של Streamlit מוסתר. בבאנר אין כפתורי ניווט למשתמשים מחוברים (הגדרות ויציאה בסרגל הצד);
+# רק בפיתוח מקומי בלי התחברות ("both") יש בבאנר כפתורים למעבר בין מסך עובד למסך נציג
 current_page = st.navigation(pages, position="hidden")
+st.session_state["_page"] = "employee" if current_page.title == employee_page.title else "other"
 ui.setup_page()
-ui.topbar(pages, current_page, user)
+ui.topbar([employee_page, representative_page] if user["role"] == "both" else [], current_page, user)
+ui.render_sidebar_footer()
 current_page.run()

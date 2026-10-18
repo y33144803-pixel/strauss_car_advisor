@@ -61,6 +61,8 @@ def init_db() -> None:
         columns = [row[1] for row in conn.execute("PRAGMA table_info(sessions)")]
         if "username" not in columns:                  # שיחות ישנות (לפני ההתחברות) נשארות בלי בעלים
             conn.execute("ALTER TABLE sessions ADD COLUMN username TEXT")
+        if "title" not in columns:                     # שם שהמשתמש נתן לשיחה (אחרת מוצגת תחילת ההודעה הראשונה)
+            conn.execute("ALTER TABLE sessions ADD COLUMN title TEXT")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS rep_questions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -218,7 +220,7 @@ def list_user_sessions(username: str) -> list[dict]:
     """היסטוריית השיחות של משתמש, מהאחרונה לראשונה. שיחה בלי הודעות של העובד (רק פתיחה) לא נכללת."""
     init_db()
     with closing(_connect()) as conn:
-        rows = conn.execute("""SELECT session_id, messages_json, created_at, updated_at FROM sessions
+        rows = conn.execute("""SELECT session_id, messages_json, created_at, updated_at, title FROM sessions
                                WHERE username = ? ORDER BY updated_at DESC""", (username,)).fetchall()
     sessions = []
     for row in rows:
@@ -228,8 +230,29 @@ def list_user_sessions(username: str) -> list[dict]:
             continue
         sessions.append({"session_id": row["session_id"], "created_at": row["created_at"],
                          "updated_at": row["updated_at"], "preview": first_user[:80],
+                         "title": (row["title"] or "").strip() or first_user[:40],
                          "messages": sum(1 for m in messages if m["role"] == "user")})
     return sessions
+
+
+def rename_session(session_id: str, username: str, title: str) -> bool:
+    """נותן שם לשיחה (רק לבעלים). שם ריק מחזיר את השם האוטומטי (תחילת ההודעה הראשונה)."""
+    init_db()
+    with closing(_connect()) as conn, conn:
+        cursor = conn.execute("UPDATE sessions SET title = ? WHERE session_id = ? AND username = ?",
+                              ((title or "").strip()[:60] or None, session_id, username))
+    return cursor.rowcount > 0
+
+
+def delete_session(session_id: str, username: str) -> bool:
+    """מוחק שיחה של המשתמש, ומבטל שאלות פתוחות שלה אצל הנציג (כדי שלא יישארו שאלות על שיחה שנמחקה)."""
+    init_db()
+    with closing(_connect()) as conn, conn:
+        cursor = conn.execute("DELETE FROM sessions WHERE session_id = ? AND username = ?", (session_id, username))
+        if cursor.rowcount:
+            conn.execute("UPDATE rep_questions SET status = 'cancelled' WHERE session_id = ? AND status = 'open'",
+                         (session_id,))
+    return cursor.rowcount > 0
 
 
 # --- שאלות לנציג ---

@@ -171,6 +171,13 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
   .st-key-loginimage img { height: auto; width: 100% !important; max-width: 100%; }
 }
 
+/* סרגל הצד: רשימת שיחות (כפתור לכל שיחה, השיחה הפעילה בסגול) ושורת איקונים בתחתית */
+.st-key-chat-list button { justify-content: flex-start; text-align: right; }
+.st-key-chat-list button p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
+[data-testid="stSidebarUserContent"] > div > [data-testid="stVerticalBlock"] { min-height: calc(100vh - 7rem); }
+.st-key-chat-list [data-testid="stPopover"] button div[aria-hidden="true"] { display: none; }
+div:has(> .st-key-sidebar-footer) { order: 999; margin-top: auto; }
+
 /* פאנל הצד: "הנתונים שנקלטו עד כה" */
 [data-testid="stSidebarContent"] { padding-top: 6.4rem; }
 [data-testid="stSidebarHeader"] { display: none; }
@@ -274,18 +281,15 @@ def topbar(pages: list, current, user: dict | None = None) -> None:
             tagline.markdown("<div class='bar-title'>היועץ שלך</div><div class='bar-sub'>שואלים אותי הכול על הנטו</div>",
                              unsafe_allow_html=True)
         with nav:
-            with_logout = bool(user and user.get("role") != "both")
-            if not pages and not with_logout:        # מסך הכניסה: אותו באנר, בלי כפתורי ניווט
-                return
-            columns = st.columns(len(pages) + (1 if with_logout else 0))
+            if not pages:                            # מסך הכניסה והמשתמשים המחוברים: הבאנר בלי כפתורים
+                return                               # (הגדרות ויציאה נמצאים בסרגל הצד)
+            columns = st.columns(len(pages))
             for column, page in zip(columns, pages):
                 if current is not None and page.title == current.title:
                     column.markdown(f"<div class='nav-pill active'>{page.icon} {html.escape(page.title)}</div>",
                                     unsafe_allow_html=True)
                 else:
                     column.page_link(page, label=page.title, icon=page.icon, use_container_width=True)
-            if with_logout and columns[-1].button("יציאה", key="logout_button", use_container_width=True):
-                logout()
 
 
 def _rate(value) -> str:
@@ -498,6 +502,80 @@ def render_login() -> None:
         if LOGIN_IMAGE:
             with st.container(key="loginimage"):
                 st.image(LOGIN_IMAGE, width="stretch")
+
+
+def _open_session(session_id: str) -> None:
+    st.session_state["sid"] = session_id
+    st.query_params["sid"] = session_id
+    if st.session_state.get("_page") != "employee":
+        st.switch_page("views/employee.py")
+    st.rerun()
+
+
+def render_history_sidebar(current_sid: str | None) -> None:
+    """סרגל הצד של העובד, כמו בצ'אט מוכר: שיחה חדשה, והיסטוריית השיחות - פתיחה, שינוי שם ומחיקה (עם אישור)."""
+    import db
+    owner = _owner_for_sessions()
+    with st.sidebar:
+        if st.button("שיחה חדשה", icon=":material/add:", key="new_chat_button", use_container_width=True):
+            new_session()
+            _open_session(st.session_state["sid"])
+        if not owner:                              # התחברות כבויה (פיתוח מקומי): אין היסטוריה אישית
+            return
+        pending = st.session_state.get("confirm_delete")
+        sessions = db.list_user_sessions(owner)
+        st.caption("השיחות שלי")
+        if pending:
+            target = next((x for x in sessions if x["session_id"] == pending), None)
+            if target is None:
+                st.session_state.pop("confirm_delete", None)
+            else:
+                st.warning(f"למחוק את השיחה \"{target['title']}\"?")
+                yes, no = st.columns(2)
+                if yes.button("מחיקה", key="confirm_delete_yes", type="primary", use_container_width=True):
+                    db.delete_session(pending, owner)
+                    st.session_state.pop("confirm_delete", None)
+                    if pending == current_sid:
+                        new_session()
+                    st.rerun()
+                if no.button("ביטול", key="confirm_delete_no", use_container_width=True):
+                    st.session_state.pop("confirm_delete", None)
+                    st.rerun()
+        if not sessions:
+            st.caption("עוד אין שיחות קודמות.")
+        with st.container(key="chat-list"):
+            for item in sessions:
+                session_id = item["session_id"]
+                title_col, menu_col = st.columns([5, 1.4], vertical_alignment="center")
+                active = session_id == current_sid
+                if title_col.button(item["title"], key=f"open_{session_id}", use_container_width=True,
+                                    type="primary" if active else "secondary", help=item["preview"]):
+                    _open_session(session_id)
+                with menu_col.popover("", icon=":material/more_horiz:", use_container_width=True):
+                    new_title = st.text_input("שם השיחה", value=item["title"], key=f"title_{session_id}")
+                    if st.button("שמירת שם", key=f"save_{session_id}", use_container_width=True):
+                        db.rename_session(session_id, owner, new_title)
+                        st.rerun()
+                    if st.button("מחיקת השיחה", key=f"delete_{session_id}", icon=":material/delete:",
+                                 use_container_width=True):
+                        st.session_state["confirm_delete"] = session_id
+                        st.rerun()
+
+
+def render_sidebar_footer() -> None:
+    """בתחתית סרגל הצד: איקון הגדרות (האזור האישי) ואיקון יציאה. נקרא פעם אחת ב-app.py; CSS מציב אותו למטה."""
+    user = st.session_state.get("user") or {}
+    if user.get("role") == "both":                  # פיתוח מקומי בלי התחברות: אין הגדרות או יציאה
+        return
+    with st.sidebar:
+        with st.container(key="sidebar-footer"):
+            settings, leave = st.columns(2)
+            if settings.button("הגדרות", icon=":material/settings:", key="settings_button", help="הגדרות",
+                               use_container_width=True):
+                st.switch_page("views/account.py")
+            if leave.button("יציאה", icon=":material/logout:", key="logout_icon", help="יציאה",
+                            use_container_width=True):
+                logout()
 
 
 def logout() -> None:
