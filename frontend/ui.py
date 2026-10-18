@@ -181,7 +181,7 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
                     box-shadow: 0 8px 24px rgba(0,0,0,.07); }
 .st-key-logincard h3 { margin-top: 0; }
 .st-key-logincard { position: relative; z-index: 3; }      /* הכרטיס מעל שולי התמונה (רקע לבן) */
-.st-key-loginimage { position: fixed; left: 4vw; bottom: 0; width: auto; margin: 0; padding: 0; line-height: 0; z-index: 1; }
+.st-key-loginimage { position: fixed; left: 8vw; bottom: 0; width: auto; margin: 0; padding: 0; line-height: 0; z-index: 1; }
 .st-key-loginimage, .st-key-loginimage * { margin: 0 !important; padding: 0 !important; }
 .st-key-loginimage img { display: block; height: calc(100vh - 78px); width: auto !important; max-width: 52vw;
                          object-fit: contain; object-position: left bottom; border-radius: 0; }
