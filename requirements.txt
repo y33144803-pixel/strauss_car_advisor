@@ -1,0 +1,13 @@
+# Python 3.12
+streamlit==1.65.0
+pandas==3.0.6
+numpy==2.5.4
+openpyxl==3.1.5
+pydantic==2.14.1
+python-dotenv==1.2.4
+llama-index-core==0.14.25
+llama-index-llms-google-genai==0.11.3
+llama-index-llms-openai==0.7.10
+google-genai==2.30.1
+# לבדיקות
+pytest==9.1.1

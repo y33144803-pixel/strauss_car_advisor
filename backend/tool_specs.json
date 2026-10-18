@@ -1,0 +1,122 @@
+{
+  "_note": "תיאור כלי הסוכן: מה כל כלי מקבל ומה מחזיר. הקוד נמצא ב-agent_tools.py. מזהה השיחה מחובר בקוד ואינו חלק מהתיאור. כל כלי מחזיר: ok, data, error, missing (נתונים חסרים), next_step (הצעד הבא).",
+  "tools": [
+    {
+      "name": "update_employee_data",
+      "status": "שומר את הנתונים שמסרת...",
+      "description": "שמירת נתונים שהעובד מסר בשיחה, או תיקון נתון שכבר נמסר (הערך החדש דורס את הישן). להפעיל בכל פעם שהעובד מוסר נתון - גם כמה נתונים יחד. לשלוח רק שדות שהעובד אמר במפורש; לעולם לא להשלים ערך בהשערה. אם העובד אמר שאין לו עמלות/בונוס/קרן השתלמות - לשלוח 0.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "eligibility_group": {"type": "string", "enum": ["א", "ב", "ג", "ד"], "description": "קבוצת הזכאות של העובד - רק אם העובד אמר אותה במפורש. אם ציין עיסוק, שלח occupation והקבוצה תיקבע לבד"},
+          "base_salary": {"type": "number", "description": "שכר בסיס חודשי ברוטו בש\"ח"},
+          "commissions": {"type": "number", "description": "עמלות חודשיות בש\"ח (0 אם אין)"},
+          "bonus": {"type": "number", "description": "בונוס חודשי בש\"ח (0 אם אין)"},
+          "pension_rate": {"type": "number", "description": "אחוז הפרשת העובד לפנסיה כמספר: 6 עבור 6%"},
+          "study_fund_rate": {"type": "number", "description": "אחוז הפרשת העובד לקרן השתלמות כמספר: 2.5 עבור 2.5% (0 אם אין)"},
+          "credit_points": {"type": "number", "description": "מספר נקודות הזיכוי, למשל 2.25 (תושב ישראל), 2.75 (אישה). הטווח החוקי 0 עד 100; 0 אם אין"},
+          "occupation": {"type": "string", "description": "העיסוק כפי שהעובד אמר (מותאם לטבלת העיסוקים, למשל 'מפתח/ת תוכנה'). העיסוק קובע אוטומטית את קבוצת הזכאות, ונדרש גם לוויתור על רכב"},
+          "children_under_23": {"type": "integer", "description": "מספר ילדים עד גיל 23, רק אם העובד מסר מספר בלי גילאים. עדיף לשלוח children_ages"},
+          "children_ages": {"type": "array", "items": {"type": "integer"}, "description": "גילאי כל הילדים של העובד, למשל [3, 7, 12, 24]. הספירה (עד גיל 23) נעשית בקוד - אל תספור בעצמך. נדרש רק למסלול ברוכת ילדים"},
+          "current_participation": {"type": "number", "description": "השתתפות חודשית של העובד ברכב הנוכחי בש\"ח"},
+          "new_participation": {"type": "number", "description": "השתתפות חודשית ברכב החדש בש\"ח - רק אם העובד יודע אותה בוודאות"}
+        },
+        "required": []
+      },
+      "returns": "data.updated - מה נשמר; data.corrected - נתונים שתוקנו (לאשר לעובד); error - נתון שגוי שלא נשמר (לבקש תיקון); missing - מה עוד חסר לחישוב"
+    },
+    {
+      "name": "find_current_car",
+      "status": "מחפש את הרכב במאגר...",
+      "description": "חיפוש הרכב שיש לעובד היום לפי השם המסחרי (ושנת רישום). מחפש קודם בקטלוג החברה ואחר כך במאגר רשות המסים. להפעיל כשהעובד מספר איזה רכב יש לו היום.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "commercial_name": {"type": "string", "description": "השם המסחרי של הרכב באנגלית כפי שהעובד מסר, למשל 'COROLLA CROSS' או 'TUCSON'"},
+          "registration_year": {"type": "integer", "description": "שנת הרישום של הרכב, אם העובד מסר"}
+        },
+        "required": ["commercial_name"]
+      },
+      "returns": "data.candidates - רשימה ממוספרת של רכבים מתאימים (number, display_name - השם להצגה לעובד בדיוק כפי שהוא, הנעה, שווי שימוש). העובד בוחר מספר - לא לבחור בשבילו. אם אין תוצאות - error"
+    },
+    {
+      "name": "set_current_situation",
+      "status": "מעדכן את מצב הרכב הנוכחי...",
+      "description": "קביעת המצב של העובד היום: car - רכב חברה (מספר מתוך המועמדים של find_current_car), waiver - העובד ויתר בעבר ומקבל אחזקת רכב, none - אין רכב ואין אחזקה.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "kind": {"type": "string", "enum": ["car", "waiver", "none"], "description": "סוג המצב היום"},
+          "candidate_number": {"type": "integer", "description": "מספר המועמד שהעובד בחר (רק עבור car)"},
+          "maintenance": {"type": "number", "description": "סכום אחזקת הרכב החודשית שהעובד מקבל היום בש\"ח (רק עבור waiver; אם לא ידוע - לא לשלוח)"},
+          "participation": {"type": "number", "description": "השתתפות חודשית של העובד ברכב הנוכחי בש\"ח (רק עבור car; לשלוח אם העובד כבר אמר)"}
+        },
+        "required": ["kind"]
+      },
+      "returns": "data.current - המצב שנשמר כולל שווי שימוש מהמאגר הרשמי; missing - מה עוד חסר (למשל השתתפות ברכב הנוכחי)"
+    },
+    {
+      "name": "show_catalog",
+      "status": "מכין את רשימת הרכבים הזמינים...",
+      "description": "פותח לעובד מעל תיבת השיחה בורר רכבים (כפתורים, או טבלה כשיש יותר מ-5) לבחירה בלחיצה. הבורר מציג את הרכבים שהעובד רשאי לבחור: מהקבוצה שלו או נמוכה ממנה, ורכבי מסלול ברוכת ילדים אם הוא זכאי, ואפשרות ויתור לפי העיסוק. להפעיל כשהעובד רוצה לבחור רכב, שואל מה האפשרויות, אומר שיש לו רכב אחר, רוצה להחליף רכב, או לא בחר.",
+      "parameters": {"type": "object", "properties": {}, "required": []},
+      "returns": "data.cars - רשימת רכבים (id, display_name, קבוצה, הנעה, שווי שימוש, עלות חודשית). הרשימה מוצגת לעובד אוטומטית בבורר שמעל תיבת השיחה, ולכן לא מציגים אותה בצ'אט; כשהעובד בוחר בלחיצה מגיעה הודעה עם מזהה הרכב; data.budget - תקציב הקבוצה; data.waiver_option - האם אפשר לוותר ובכמה אחזקה"
+    },
+    {
+      "name": "verify_budget_and_eligibility",
+      "status": "בודק זכאות ותקציב...",
+      "description": "בדיקת זכאות לחלופה שהעובד בחר - רכב מהקטלוג (לפי מזהה) או 'ויתור'. בודק קבוצה, תקציב, מסלול ברוכת ילדים ועיסוק. אם החלופה מאושרת היא נשמרת כחלופה המבוקשת. חובה להפעיל לפני חישוב.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "choice": {"type": "string", "description": "מזהה רכב מהקטלוג (למשל CAR-10), שם רכב שהעובד הקליד (גם חלקי, למשל BYD DOLPHIN) או המילה 'ויתור'"}
+        },
+        "required": ["choice"]
+      },
+      "returns": "data.eligible (true/false), data.reason - הסיבה בעברית להצגה לעובד, תקציב, עלות, שווי שימוש, החזר חשמל אם חשמלי, חלק העובד במסלול המשפחתי; missing - אם חסר עיסוק או מספר ילדים"
+    },
+    {
+      "name": "get_car_usage_value",
+      "status": "שולף שווי שימוש ממאגר רשות המסים...",
+      "description": "שליפת שווי שימוש ישירות ממאגר רשות המסים לפי המפתח הרשמי המלא. להשתמש רק כשכל חמשת הקודים ידועים בוודאות (שם מסחרי לבדו אינו מספיק - לשם כך יש find_current_car).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "tax_year": {"type": "integer", "description": "שנת המס, למשל 2026"},
+          "registration_year": {"type": "integer", "description": "שנת רישום הרכב"},
+          "car_type_code": {"type": "string", "description": "קוד סוג רכב (1 או 2)"},
+          "make_code": {"type": "string", "description": "קוד תוצר, למשל 00885"},
+          "model_code": {"type": "string", "description": "קוד דגם, למשל 00643"}
+        },
+        "required": ["tax_year", "registration_year", "car_type_code", "make_code", "model_code"]
+      },
+      "returns": "data: שם מסחרי, תוצר, שנת רישום, שווי שימוש, מחיר מחירון, הנעה; או error אם הרשומה לא קיימת"
+    },
+    {
+      "name": "calculate_net_salary",
+      "status": "מחשב את הנטו...",
+      "description": "הרצת מנוע החישוב: נטו היום מול נטו בחלופה, לפי כל הנתונים שנשמרו בשיחה. לא מקבל מספרים - קורא הכול מהמצב השמור. להפעיל רק כשאין נתונים חסרים, ושוב אחרי כל תיקון נתון או החלפת חלופה.",
+      "parameters": {"type": "object", "properties": {}, "required": []},
+      "returns": "data.status (final / provisional = השוואת ביניים עד תשובת נציג), net_today, net_alternative, diff, today/alternative עם פירוט (שווי שימוש, מס, ביטוח לאומי, השתתפות, החזר חשמל, אחזקה), changes - רשימת שינויים, explanation - הסבר בשתי שורות להצגה לעובד; או error + missing"
+    },
+    {
+      "name": "request_representative_info",
+      "status": "שולח שאלה לנציג התחבורה...",
+      "description": "שליחת שאלה לנציג התחבורה כשחסר נתון שהעובד לא יודע (למשל השתתפות ברכב החדש). להפעיל במקום לנחש - תמיד. לא להשתמש בכלי לבקשות שחורגות ממדיניות החברה (פדיון תקציב רכב שלא נוצל, שינוי דמי ויתור) - אלה נדחות מיידית בלי נציג. אחרי ההפעלה לעדכן את העובד שהשאלה נשלחה לנציג.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "missing_field": {
+            "type": "string",
+            "enum": ["new_participation", "current_participation", "current_car_usage_value", "waiver_maintenance", "other"],
+            "description": "הנתון החסר: new_participation - השתתפות ברכב החדש; current_participation - השתתפות ברכב הנוכחי; current_car_usage_value - הרכב הנוכחי לא נמצא במאגר; waiver_maintenance - העיסוק לא בטבלה ולא ידוע אם מותר לוותר; other - נתון חסר אחר בלבד, לעולם לא בקשה חריגה מהמדיניות"
+          },
+          "context_message": {"type": "string", "description": "הסבר קצר וברור לנציג: מה חסר ולמה, כולל פרטי הרכב הרלוונטיים"},
+          "employee_confirmed_unknown": {"type": "boolean", "description": "true רק אם העובד אמר במפורש שהוא לא יודע את הנתון. חובה עבור new_participation ו-current_participation: קודם שואלים את העובד, ורק אם ענה שאינו יודע פונים לנציג"}
+        },
+        "required": ["missing_field", "context_message"]
+      },
+      "returns": "data.question_id; ועבור new_participation - data.provisional_comparison: השוואת ביניים לפי השתתפות ברירת המחדל מהקטלוג, להצגה לעובד עם ציון שהיא זמנית"
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+[
+  {
+    "occupation": "נציג/ת מכירות שטח",
+    "group": "ב",
+    "car_required": true,
+    "waiver_allowed": false,
+    "maintenance_amount": 0
+  },
+  {
+    "occupation": "מנהל/ת אזור מכירות",
+    "group": "ג",
+    "car_required": true,
+    "waiver_allowed": false,
+    "maintenance_amount": 0
+  },
+  {
+    "occupation": "טכנאי/ת שירות",
+    "group": "א",
+    "car_required": true,
+    "waiver_allowed": false,
+    "maintenance_amount": 0
+  },
+  {
+    "occupation": "נהג/ת הפצה",
+    "group": "א",
+    "car_required": true,
+    "waiver_allowed": false,
+    "maintenance_amount": 0
+  },
+  {
+    "occupation": "מפקח/ת איכות במפעל",
+    "group": "א",
+    "car_required": false,
+    "waiver_allowed": true,
+    "maintenance_amount": 1200
+  },
+  {
+    "occupation": "רכז/ת רכש",
+    "group": "א",
+    "car_required": false,
+    "waiver_allowed": true,
+    "maintenance_amount": 1200
+  },
+  {
+    "occupation": "מהנדס/ת תהליך",
+    "group": "ב",
+    "car_required": false,
+    "waiver_allowed": true,
+    "maintenance_amount": 1500
+  },
+  {
+    "occupation": "מפתח/ת תוכנה",
+    "group": "ב",
+    "car_required": false,
+    "waiver_allowed": true,
+    "maintenance_amount": 1500
+  },
+  {
+    "occupation": "אנליסט/ית נתונים",
+    "group": "ב",
+    "car_required": false,
+    "waiver_allowed": true,
+    "maintenance_amount": 1500
+  },
+  {
+    "occupation": "מנהל/ת מוצר",
+    "group": "ג",
+    "car_required": false,
+    "waiver_allowed": true,
+    "maintenance_amount": 2000
+  },
+  {
+    "occupation": "מנהל/ת פיתוח",
+    "group": "ג",
+    "car_required": false,
+    "waiver_allowed": true,
+    "maintenance_amount": 2000
+  },
+  {
+    "occupation": "מנהל/ת משאבי אנוש",
+    "group": "ג",
+    "car_required": false,
+    "waiver_allowed": true,
+    "maintenance_amount": 2000
+  },
+  {
+    "occupation": "מנהל/ת מחלקה",
+    "group": "ד",
+    "car_required": false,
+    "waiver_allowed": true,
+    "maintenance_amount": 2600
+  },
+  {
+    "occupation": "מנהל/ת חטיבה",
+    "group": "ד",
+    "car_required": false,
+    "waiver_allowed": true,
+    "maintenance_amount": 3000
+  }
+]

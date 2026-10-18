@@ -1,0 +1,27 @@
+# פריסה ל-Render (Blueprint). הערה: לא נבדק מול Render בפועל - יש לאמת מול התיעוד העדכני שלהם.
+# דיסק קבוע דורש תוכנית בתשלום. המפתחות והסיסמה מוגדרים בלוח הבקרה (sync: false), לא בקובץ.
+services:
+  - type: web
+    name: strauss-car-advisor
+    runtime: docker
+    plan: starter
+    healthCheckPath: /_stcore/health
+    disk:
+      name: advisor-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: STRAUSS_DB_PATH
+        value: /data/advisor.db
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: LLM_MODEL
+        value: gemini-3.1-flash-lite
+      - key: LLM_FALLBACK_MODELS
+        value: gemini-3.5-flash-lite,gemini-3.5-flash
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY_2
+        sync: false
+      - key: REP_PASSWORD
+        sync: false

@@ -1,0 +1,16 @@
+# הרצה מקומית:  docker compose up --build   ואז  http://localhost:8501
+services:
+  advisor:
+    build: .
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env            # המפתחות נקראים מהקובץ בזמן ההרצה; הם לא נארזים בתוך התמונה
+    environment:
+      STRAUSS_DB_PATH: /data/advisor.db
+    volumes:
+      - advisor-data:/data
+    restart: unless-stopped
+
+volumes:
+  advisor-data:
