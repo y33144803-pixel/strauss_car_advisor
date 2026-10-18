@@ -634,14 +634,20 @@ def test_admin_forms_open_by_buttons():
     assert any(b.label == "ביטול" for b in at.button)
 
 
-def test_employee_must_approve_saving_before_chatting_and_approves_once(auth_on):
+def test_consent_appears_for_every_new_chat_until_dont_remind_is_checked(auth_on):
     import db
     at = app_with_login("dana", "secret-1", consent=False)
     assert not at.chat_input and any(b.key == "consent_button" for b in at.button)
-    assert not db.has_consented("dana")
-    at.button(key="consent_button").click().run()
-    assert db.has_consented("dana") and at.chat_input
-    assert not any(b.key == "consent_button" for b in at.button)
+    assert any(c.key == "consent_remember" for c in at.checkbox)
+    at.button(key="consent_button").click().run()                     # אישור בלי סימון: תקף לשיחה הזאת בלבד
+    assert at.chat_input and not db.has_consented("dana")
+    at.sidebar.button(key="new_chat_button").click().run()            # שיחה חדשה: האישור מופיע שוב
+    assert not at.chat_input and any(b.key == "consent_button" for b in at.button)
+    at.checkbox(key="consent_remember").check()
+    at.button(key="consent_button").click().run()                     # אישור עם "אל תזכירו שוב"
+    assert at.chat_input and db.has_consented("dana")
+    at.sidebar.button(key="new_chat_button").click().run()            # שיחה חדשה: כבר לא מופיע
+    assert at.chat_input and not any(b.key == "consent_button" for b in at.button)
 
 
 def test_rep_and_admin_have_no_sidebar_and_no_consent(auth_on):

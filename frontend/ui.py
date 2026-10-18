@@ -439,22 +439,29 @@ def _owner_for_sessions() -> str | None:
     return user["username"] if user and user.get("role") != "both" else None
 
 
-def require_consent() -> None:
-    """אישור שמירת השיחות: מוצג לעובד פעם אחת, ובלעדיו אין גישה לשיחה. נשמר למשתמש במסד
-    (בפיתוח מקומי בלי התחברות - לאורך ההפעלה בלבד)."""
+def require_consent(sid: str) -> None:
+    """אישור שמירת השיחות: מוצג בכל שיחה חדשה (שעוד אין בה הודעות של העובד), ובלעדיו אין גישה לשיחה.
+    תיבת הסימון "אל תזכירו לי שוב" שומרת למשתמש במסד (בפיתוח מקומי בלי התחברות - לאורך ההפעלה בלבד),
+    ומאותו רגע האישור לא מוצג עוד. בלי סימון - האישור תקף לשיחה הזאת בלבד."""
     import db
     owner = _owner_for_sessions()
     if (db.has_consented(owner) if owner else st.session_state.get("chat_consent")):
         return
+    approved = st.session_state.setdefault("approved_sids", set())
+    if sid in approved or any(m["role"] == "user" for m in db.load_messages(sid)):
+        return                                           # אושר כבר בשיחה הזאת, או שיחה קיימת שבה כבר כתבו
     with st.container(key="consent-card", border=True):
         st.markdown("#### לפני שמתחילים")
         st.write("השיחות נשמרות לצורך מעקב ושיפור השירות, וגורמים מורשים בארגון (כמו מנהל המערכת) יכולים לצפות בהן. "
-                 "להמשך השימוש נדרש אישור.")
+                 "להמשך השיחה נדרש אישור.")
+        remember = st.checkbox("אל תזכירו לי שוב", key="consent_remember")
         if st.button("אני מאשר/ת", key="consent_button", type="primary"):
-            if owner:
-                db.give_consent(owner)
-            else:
-                st.session_state["chat_consent"] = True
+            approved.add(sid)
+            if remember:
+                if owner:
+                    db.give_consent(owner)
+                else:
+                    st.session_state["chat_consent"] = True
             st.rerun()
     st.stop()
 

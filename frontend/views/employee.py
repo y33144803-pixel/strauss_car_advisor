@@ -14,7 +14,7 @@ from ui import (CLOSE_PICKER, avatar_for, get_session_id, render_car_picker, ren
 require_role("employee")                # רק עובדים (או התחברות כבויה בפיתוח מקומי)
 logger = logging.getLogger("strauss.employee")
 sid = get_session_id()
-require_consent()                       # אישור שמירת השיחות, פעם אחת לכל עובד
+require_consent(sid)                    # אישור שמירת השיחות: בכל שיחה חדשה, אלא אם סימנו "אל תזכירו שוב"
 CHAT_HEIGHT = 480
 CHAT_HEIGHT_WITH_PICKER = 250
 
