@@ -119,6 +119,7 @@ prompt = st.chat_input("כתוב/י כאן...")
 text = prompt or picked_text
 messages = start_session(sid)
 with chat_box:
+    st.caption("🔒 השיחות נשמרות לצורך מעקב ושיפור השירות. בהמשך השיחה את/ה מאשר/ת את שמירתן.")
     last_comparison = max((i for i, m in enumerate(messages)
                            if m["role"] == "assistant"
                            and ("נטו היום" in m["content"] or m["content"].startswith("**השוואה"))),
