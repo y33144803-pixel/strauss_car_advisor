@@ -183,6 +183,7 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 
 
 COPY_BUTTON_JS = """
+(() => {                         // עטיפה: אחרת ההרצה השנייה של הסקריפט מצהירה שוב על doc ומקבלת שגיאה
 const doc = window.parent.document;
 if (!doc.__copyButtons) {
   doc.__copyButtons = true;
@@ -202,6 +203,7 @@ if (!doc.__copyButtons) {
   new MutationObserver(add).observe(doc.body, {childList: true, subtree: true});
   add();
 }
+})();
 """
 
 
