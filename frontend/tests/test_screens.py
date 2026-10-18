@@ -607,3 +607,29 @@ def test_greeting_asks_what_the_employee_wants_to_do():
     import agent
     assert agent.GREETING.rstrip().endswith("מה תרצה/י לעשות?")
     assert "נתחיל מהבסיס" not in agent.GREETING
+
+
+def test_admin_screen_lists_users_and_sessions():
+    at = signed_in(AppTest.from_file(os.path.join(VIEWS, "admin.py"), default_timeout=30), role="admin").run()
+    assert not at.exception
+    assert [t.label for t in at.tabs] == ["שיחות", "משתמשים"]
+
+
+def test_admin_screen_blocked_for_employee():
+    at = signed_in(AppTest.from_file(os.path.join(VIEWS, "admin.py"), default_timeout=30), role="employee").run()
+    assert any("אין הרשאה" in e.value for e in at.error)
+
+
+def test_admin_forms_open_by_buttons():
+    at = signed_in(AppTest.from_file(os.path.join(VIEWS, "admin.py"), default_timeout=30), role="admin").run()
+    assert not at.exception
+    assert not [b for b in at.button if b.label == "ביטול"]          # הטפסים סגורים עד לחיצה
+    next(b for b in at.button if b.label == "הוספת משתמש").click()
+    at.run()
+    assert not at.exception
+    assert any(b.label == "ביטול" for b in at.button)
+
+
+def test_chat_shows_conversation_saving_notice():
+    at = employee_app()
+    assert any("השיחות נשמרות לצורך מעקב ושיפור השירות" in c.value for c in at.caption)

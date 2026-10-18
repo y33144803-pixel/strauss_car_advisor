@@ -4,3 +4,6 @@ __pycache__/
 .pytest_cache/
 *.db
 storage/
+
+# גיבוי משתמשים (סיסמאות מוצפנות) - לא עולה לגיטהאב
+users_backup.json
