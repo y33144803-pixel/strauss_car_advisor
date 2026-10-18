@@ -97,3 +97,38 @@ def test_sessions_belong_to_their_owner_and_history_is_per_user():
 def test_legacy_session_without_owner_cannot_be_claimed():
     db.save_messages("old", [{"role": "user", "content": "מלפני ההתחברות"}])
     assert db.claim_session("old", "dana") is False
+
+
+def test_change_username_keeps_sessions_and_login_and_is_not_resurrected_by_seeding():
+    auth.seed_users()
+    db.claim_session("s1", "dana")
+    db.save_messages("s1", [{"role": "user", "content": "שאלה"}])
+    token = db.create_token("dana")
+    updated = auth.change_username("dana", "secret-1", "dana.k")
+    assert updated == {"username": "dana.k", "display_name": "דנה כהן", "role": "employee"}
+    assert db.user_for_token(token)["username"] == "dana.k"                  # ההתחברות נשמרת
+    assert [h["session_id"] for h in db.list_user_sessions("dana.k")] == ["s1"]   # וגם ההיסטוריה
+    assert db.list_user_sessions("dana") == []
+    with pytest.raises(auth.LoginError):
+        auth.authenticate("dana", "secret-1")                                # השם הישן לא נכנס
+    assert auth.authenticate("dana.k", "secret-1")["role"] == "employee"
+    assert auth.seed_users() == 0                                            # הפעלה מחדש לא יוצרת שוב את "dana"
+    assert db.get_user("dana") is None
+
+
+@pytest.mark.parametrize("bad", ["ab", "a b c", "dana:x", "x" * 31, "שם;"])
+def test_change_username_rejects_invalid_names(bad):
+    auth.seed_users()
+    with pytest.raises(auth.LoginError):
+        auth.change_username("dana", "secret-1", bad)
+
+
+def test_change_username_requires_password_and_unique_name():
+    auth.seed_users()
+    with pytest.raises(auth.LoginError):
+        auth.change_username("dana", "wrong", "dana2")
+    with pytest.raises(auth.LoginError):
+        auth.change_username("dana", "secret-1", "MOSHE")                    # תפוס (בלי תלות באותיות)
+    with pytest.raises(auth.LoginError):
+        auth.change_username("dana", "secret-1", "dana")                     # זהה לנוכחי
+    assert auth.change_username("dana", "secret-1", "דנה_כ")["username"] == "דנה_כ"   # גם עברית

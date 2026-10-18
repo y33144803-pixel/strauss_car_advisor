@@ -11,6 +11,7 @@
 import hashlib
 import hmac
 import os
+import re
 import secrets
 import time
 
@@ -21,6 +22,7 @@ import db
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROLES = ("employee", "rep")
 MIN_PASSWORD_LENGTH = 6
+USERNAME_RE = re.compile(r"^[0-9A-Za-zא-ת._-]{3,30}$")      # אותיות (גם עבריות), ספרות, נקודה, קו תחתון ומקף
 MAX_FAILED_ATTEMPTS = 5
 LOCK_SECONDS = 60
 _SCRYPT = {"n": 2 ** 14, "r": 8, "p": 1}
@@ -122,3 +124,18 @@ def change_password(username: str, old_password: str, new_password: str) -> None
     if new_password == old_password:
         raise LoginError("הסיסמה החדשה זהה לנוכחית.")
     db.set_password_hash(username, hash_password(new_password))
+
+
+def change_username(username: str, password: str, new_username: str) -> dict:
+    """מחליף שם משתמש (נדרשת הסיסמה הנוכחית). מחזיר את המשתמש המעודכן. השיחות וההתחברות נשמרות."""
+    new_username = (new_username or "").strip()
+    user = db.get_user(username)
+    if not user or not verify_password(password or "", user["password_hash"]):
+        raise LoginError("הסיסמה שגויה.")
+    if not USERNAME_RE.match(new_username):
+        raise LoginError("שם משתמש חייב להכיל 3 עד 30 תווים: אותיות, ספרות, נקודה, קו תחתון או מקף (בלי רווחים).")
+    if new_username == username:
+        raise LoginError("שם המשתמש החדש זהה לנוכחי.")
+    if not db.rename_user(username, new_username):
+        raise LoginError("שם המשתמש הזה כבר תפוס.")
+    return {"username": new_username, "display_name": user["display_name"], "role": user["role"]}

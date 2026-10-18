@@ -458,9 +458,13 @@ def login_prefill() -> tuple[str, str]:
         users = auth.parse_users(os.environ.get("AUTH_USERS", ""))
     except ValueError:
         return "", ""
+    import db
     for user in users:
         if user["username"] == wanted and user["role"] == "employee":
-            return user["username"], user["password"]
+            stored = db.get_user(user["username"])
+            # אם העובד כבר החליף שם משתמש או סיסמה, הפרטים מהגדרות השרת כבר לא נכונים - לא ממלאים מראש
+            if stored and auth.verify_password(user["password"], stored["password_hash"]):
+                return user["username"], user["password"]
     return "", ""
 
 

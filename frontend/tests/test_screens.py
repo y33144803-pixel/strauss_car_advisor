@@ -438,3 +438,68 @@ def test_login_fields_are_empty_by_default(auth_on, monkeypatch):
     monkeypatch.setenv("LOGIN_PREFILL_USER", "")                 # (delenv לא מספיק: .env המקומי היה נטען שוב)
     at = app_with_login()
     assert at.text_input[0].value == "" and at.text_input[1].value == ""
+
+
+# ------------------------------------------------------------------ האזור האישי: החלפת שם משתמש וסיסמה
+
+def account_app(auth_users=True):
+    import auth
+    auth.seed_users()
+    at = AppTest.from_file(os.path.join(VIEWS, "account.py"), default_timeout=30)
+    at.session_state["user"] = {"username": "dana", "display_name": "דנה כהן", "role": "employee"}
+    return at.run()
+
+
+@pytest.fixture
+def account_users(monkeypatch):
+    monkeypatch.setenv("AUTH_USERS", "dana:secret-1:employee:דנה כהן;moshe:secret-2:rep:משה לוי")
+
+
+def test_account_forms_are_closed_until_a_button_is_clicked(account_users):
+    at = account_app()
+    assert not at.exception
+    labels = [b.label for b in at.button]
+    assert "החלפת שם משתמש" in labels and "החלפת סיסמה" in labels
+    assert not at.text_input                                         # אין שדות פתוחים בהתחלה
+    next(b for b in at.button if b.label == "החלפת סיסמה").click().run()
+    assert [t.label for t in at.text_input] == ["סיסמה נוכחית", "סיסמה חדשה", "אימות סיסמה חדשה"]
+    next(b for b in at.button if b.label == "החלפת שם משתמש").click().run()
+    assert [t.label for t in at.text_input] == ["שם משתמש חדש", "סיסמה נוכחית"]   # נפתח רק טופס אחד
+
+
+def test_username_change_through_the_account_screen(account_users):
+    import db
+    at = account_app()
+    next(b for b in at.button if b.label == "החלפת שם משתמש").click().run()
+    at.text_input[0].set_value("dana.cohen")
+    at.text_input[1].set_value("wrong")
+    next(b for b in at.button if b.label == "עדכון שם משתמש").click().run()
+    assert any("הסיסמה שגויה" in e.value for e in at.error) and db.get_user("dana")   # סיסמה שגויה - לא משתנה
+    at.text_input[1].set_value("secret-1")
+    next(b for b in at.button if b.label == "עדכון שם משתמש").click().run()
+    assert db.get_user("dana.cohen") and db.get_user("dana") is None
+    assert at.session_state["user"]["username"] == "dana.cohen"
+    assert any("dana.cohen" in s.value for s in at.success)
+    assert not at.text_input                                         # הטופס נסגר אחרי ההצלחה
+
+
+def test_password_change_through_the_account_screen(account_users):
+    import auth
+    at = account_app()
+    next(b for b in at.button if b.label == "החלפת סיסמה").click().run()
+    at.text_input[0].set_value("secret-1")
+    at.text_input[1].set_value("brand-new-1")
+    at.text_input[2].set_value("brand-new-1")
+    next(b for b in at.button if b.label == "עדכון סיסמה").click().run()
+    assert any("הסיסמה עודכנה" in s.value for s in at.success)
+    assert auth.authenticate("dana", "brand-new-1")
+
+
+def test_prefill_stops_when_credentials_were_changed(auth_on, monkeypatch):
+    import auth
+    monkeypatch.setenv("LOGIN_PREFILL_USER", "dana")
+    at = app_with_login()
+    assert at.text_input[0].value == "dana"
+    auth.change_password("dana", "secret-1", "changed-pw")           # הסיסמה כבר לא כמו בהגדרות השרת
+    at2 = app_with_login()
+    assert at2.text_input[0].value == "" and at2.text_input[1].value == ""

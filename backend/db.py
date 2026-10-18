@@ -45,8 +45,13 @@ def init_db() -> None:
                 display_name TEXT NOT NULL,
                 role TEXT NOT NULL,                    -- employee / rep
                 password_hash TEXT NOT NULL,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                origin_username TEXT                   -- השם שהוגדר ב-AUTH_USERS (נשמר גם אחרי החלפת שם משתמש)
             )""")
+        user_columns = [row[1] for row in conn.execute("PRAGMA table_info(users)")]
+        if "origin_username" not in user_columns:
+            conn.execute("ALTER TABLE users ADD COLUMN origin_username TEXT")
+            conn.execute("UPDATE users SET origin_username = username WHERE origin_username IS NULL")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS auth_tokens (
                 token_hash TEXT PRIMARY KEY,
@@ -126,12 +131,29 @@ def get_user(username: str) -> dict | None:
 
 
 def create_user_if_missing(username: str, display_name: str, role: str, password_hash: str) -> bool:
-    """יוצר משתמש אם עוד לא קיים (משתמש קיים לא נדרס, כך ששינוי סיסמה נשמר). מחזיר True אם נוצר."""
+    """יוצר משתמש אם עוד לא קיים (משתמש קיים לא נדרס, כך ששינוי סיסמה נשמר). מחזיר True אם נוצר.
+    משתמש ששינה את שם המשתמש שלו נחשב קיים: השם המקורי מ-AUTH_USERS לא נוצר מחדש."""
     init_db()
     with closing(_connect()) as conn, conn:
-        cursor = conn.execute("""INSERT OR IGNORE INTO users (username, display_name, role, password_hash, created_at)
-                                 VALUES (?, ?, ?, ?, ?)""", (username, display_name, role, password_hash, _now()))
-    return cursor.rowcount > 0
+        exists = conn.execute("SELECT 1 FROM users WHERE username = ? OR origin_username = ?",
+                              (username, username)).fetchone()
+        if exists:
+            return False
+        conn.execute("""INSERT INTO users (username, display_name, role, password_hash, created_at, origin_username)
+                        VALUES (?, ?, ?, ?, ?, ?)""", (username, display_name, role, password_hash, _now(), username))
+    return True
+
+
+def rename_user(old: str, new: str) -> bool:
+    """מחליף שם משתמש ומעביר איתו את השיחות והאסימונים. False אם השם החדש כבר תפוס."""
+    init_db()
+    with closing(_connect()) as conn, conn:
+        if conn.execute("SELECT 1 FROM users WHERE username = ? COLLATE NOCASE", (new,)).fetchone()                 and old.casefold() != new.casefold():
+            return False
+        conn.execute("UPDATE users SET username = ? WHERE username = ?", (new, old))
+        conn.execute("UPDATE auth_tokens SET username = ? WHERE username = ?", (new, old))
+        conn.execute("UPDATE sessions SET username = ? WHERE username = ?", (new, old))
+    return True
 
 
 def set_password_hash(username: str, password_hash: str) -> None:
