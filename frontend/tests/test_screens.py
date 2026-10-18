@@ -17,8 +17,14 @@ def temp_db(tmp_path, monkeypatch):
     monkeypatch.setenv("STRAUSS_DB_PATH", str(tmp_path / "test.db"))
 
 
+def signed_in(at: AppTest, role: str = "both", name: str = "נועה לוי") -> AppTest:
+    """מדמה משתמש מחובר (בהרצה ישירה של מסך, בלי app.py שמבצע את הכניסה)."""
+    at.session_state["user"] = {"username": "tester", "display_name": name, "role": role}
+    return at
+
+
 def employee_app(show_comparison: bool = False) -> AppTest:
-    at = AppTest.from_file(os.path.join(VIEWS, "employee.py"), default_timeout=30)
+    at = signed_in(AppTest.from_file(os.path.join(VIEWS, "employee.py"), default_timeout=30))
     at.query_params["sid"] = SID
     if show_comparison:
         at.session_state["show_comparison"] = True       # העובדת סימנה "הצג השוואה מפורטת בצד"
@@ -109,7 +115,7 @@ def test_representative_answer_flows_back_to_employee_screen():
     verify_budget_and_eligibility(SID, "CAR-11")                 # חלופה חדשה בלי השתתפות
     request_representative_info(SID, "new_participation", "EV3 בקבוצה ג", True)
 
-    rep = AppTest.from_file(os.path.join(VIEWS, "representative.py"), default_timeout=30).run()
+    rep = signed_in(AppTest.from_file(os.path.join(VIEWS, "representative.py"), default_timeout=30)).run()
     assert not rep.exception
     assert any("שאלות פתוחות (1)" in s.value for s in rep.subheader)
     rep.number_input[0].set_value(350)
@@ -128,7 +134,7 @@ def test_representative_cannot_submit_empty_amount():
     verify_budget_and_eligibility(SID, "CAR-11")
     request_representative_info(SID, "new_participation", "EV3 בקבוצה ג", True)
 
-    rep = AppTest.from_file(os.path.join(VIEWS, "representative.py"), default_timeout=30).run()
+    rep = signed_in(AppTest.from_file(os.path.join(VIEWS, "representative.py"), default_timeout=30)).run()
     rep.button[0].click().run()                                  # שליחה בלי סכום
     assert any("יש להזין סכום" in e.value for e in rep.error)
     assert len(db.list_questions("open")) == 1                   # השאלה נשארת פתוחה
@@ -347,23 +353,68 @@ def test_changed_backend_module_is_reloaded(tmp_path, monkeypatch):
     sys.modules.pop("fake_backend_mod", None)
 
 
-def test_representative_screen_requires_password_when_configured(monkeypatch):
-    monkeypatch.setenv("REP_PASSWORD", "secret-123")
-    rep = AppTest.from_file(os.path.join(VIEWS, "representative.py"), default_timeout=30).run()
-    assert not rep.exception
-    assert any("כניסת נציג" in s.value for s in rep.subheader)
-    assert not any("שאלות פתוחות" in s.value for s in rep.subheader)        # בלי סיסמה אין גישה לשאלות
-    rep.text_input[0].set_value("wrong").run()
-    rep.button[0].click().run()
-    assert any("סיסמה שגויה" in e.value for e in rep.error)
-    assert not any("שאלות פתוחות" in s.value for s in rep.subheader)
-    rep.text_input[0].set_value("secret-123").run()
-    rep.button[0].click().run()
-    assert any("שאלות פתוחות" in s.value for s in rep.subheader)            # סיסמה נכונה - המסך נפתח
+# ------------------------------------------------------------------ התחברות (דרך app.py המלא)
+
+APP = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app.py")
 
 
-def test_representative_screen_open_when_no_password_configured(monkeypatch):
-    monkeypatch.delenv("REP_PASSWORD", raising=False)
-    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)         # ה-.env המקומי לא מכתיב את הבדיקה
-    rep = AppTest.from_file(os.path.join(VIEWS, "representative.py"), default_timeout=30).run()
-    assert any("שאלות פתוחות" in s.value for s in rep.subheader)
+@pytest.fixture
+def auth_on(monkeypatch):
+    monkeypatch.setenv("AUTH_DISABLED", "0")
+    monkeypatch.setenv("AUTH_USERS", "dana:secret-1:employee:דנה כהן;moshe:secret-2:rep:משה לוי")
+    import auth
+    import streamlit as st
+    auth._failures.clear()
+    st.cache_resource.clear()                     # טעינת המשתמשים (cache_resource) צריכה לרוץ מחדש לכל מסד בדיקה
+
+
+def app_with_login(username=None, password=None) -> AppTest:
+    at = AppTest.from_file(APP, default_timeout=30)
+    at.query_params["sid"] = SID
+    at.run()
+    if username:
+        at.text_input[0].set_value(username)
+        at.text_input[1].set_value(password)
+        at.button[0].click().run()
+    return at
+
+
+def test_login_page_is_shown_before_signing_in(auth_on):
+    at = app_with_login()
+    assert not at.exception
+    assert any("כניסה ליועץ הרכב" in m.value for m in at.markdown)
+    assert not at.chat_input                                         # בלי כניסה אין שיחה
+
+
+def test_wrong_password_shows_error_and_stays_logged_out(auth_on):
+    at = app_with_login("dana", "wrong-password")
+    assert any("שם משתמש או סיסמה שגויים" in e.value for e in at.error)
+    assert not at.chat_input
+
+
+def test_employee_login_shows_chat_with_own_first_letter_and_no_rep_screen(auth_on):
+    at = app_with_login("dana", "secret-1")
+    assert not at.exception and at.chat_input
+    css = " ".join(m.value for m in at.markdown)
+    assert 'content: "ד"' in css                                      # האות הראשונה של "דנה כהן"
+    assert not any("שאלות פתוחות" in s.value for s in at.subheader)
+
+
+def test_representative_login_shows_rep_screen_not_chat(auth_on):
+    at = app_with_login("moshe", "secret-2")
+    assert not at.exception
+    assert any("שאלות פתוחות" in s.value for s in at.subheader)
+    assert not at.chat_input
+
+
+def test_conversations_are_private_to_their_owner(auth_on):
+    import db
+    db.claim_session("dana-chat", "dana")
+    db.save_messages("dana-chat", [{"role": "assistant", "content": "שלום"},
+                                   {"role": "user", "content": "הנתונים הסודיים של דנה"}])
+    other = AppTest.from_file(os.path.join(VIEWS, "employee.py"), default_timeout=30)
+    other.session_state["user"] = {"username": "eli", "display_name": "אלי", "role": "employee"}
+    other.query_params["sid"] = "dana-chat"                          # אלי מנסה לפתוח את השיחה של דנה
+    other.run()
+    assert not any("הנתונים הסודיים" in m.value for m in other.markdown)
+    assert other.query_params["sid"] != "dana-chat"

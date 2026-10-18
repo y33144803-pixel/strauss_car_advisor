@@ -22,5 +22,5 @@ services:
         sync: false
       - key: GOOGLE_API_KEY_2
         sync: false
-      - key: REP_PASSWORD
-        sync: false
+      - key: AUTH_USERS
+        sync: false          # משתמשים: שם:סיסמה:תפקיד:שם תצוגה (מופרדים ב-;) - ראו README

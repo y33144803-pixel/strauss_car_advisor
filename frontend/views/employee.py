@@ -8,8 +8,9 @@ from actions import pick_message, picker_state, recalculate, set_picker
 from agent import STATUS_ANALYZING, chat, check_representative_updates, friendly_error, pending_user_message, start_session
 from agent_tools import REP_FIELDS
 from ui import (CLOSE_PICKER, avatar_for, get_session_id, new_session, render_car_picker,
-                render_comparison, render_state_card, show_markdown, typing_status_html)
+                render_comparison, render_state_card, require_role, show_markdown, typing_status_html)
 
+require_role("employee")                # רק עובדים (או התחברות כבויה בפיתוח מקומי)
 logger = logging.getLogger("strauss.employee")
 sid = get_session_id()
 CHAT_HEIGHT = 480

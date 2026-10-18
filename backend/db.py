@@ -1,9 +1,11 @@
 """SQLite: שמירת מצב השיחות והשאלות לנציג, כדי שהתהליך ישרוד רענון ויעבור בין מסך העובד למסך הנציג."""
+import hashlib
 import json
 import os
+import secrets
 import sqlite3
 from contextlib import closing
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from state import ConversationState
 
@@ -37,6 +39,23 @@ def init_db() -> None:
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )""")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                username TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                role TEXT NOT NULL,                    -- employee / rep
+                password_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )""")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS auth_tokens (
+                token_hash TEXT PRIMARY KEY,
+                username TEXT NOT NULL,
+                expires_at TEXT NOT NULL
+            )""")
+        columns = [row[1] for row in conn.execute("PRAGMA table_info(sessions)")]
+        if "username" not in columns:                  # שיחות ישנות (לפני ההתחברות) נשארות בלי בעלים
+            conn.execute("ALTER TABLE sessions ADD COLUMN username TEXT")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS rep_questions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,6 +113,101 @@ def session_exists(session_id: str) -> bool:
     init_db()
     with closing(_connect()) as conn:
         return conn.execute("SELECT 1 FROM sessions WHERE session_id = ?", (session_id,)).fetchone() is not None
+
+
+# --- משתמשים, התחברות והיסטוריית שיחות ---
+
+def get_user(username: str) -> dict | None:
+    init_db()
+    with closing(_connect()) as conn:
+        row = conn.execute("SELECT username, display_name, role, password_hash FROM users WHERE username = ?",
+                           (username,)).fetchone()
+    return dict(row) if row else None
+
+
+def create_user_if_missing(username: str, display_name: str, role: str, password_hash: str) -> bool:
+    """יוצר משתמש אם עוד לא קיים (משתמש קיים לא נדרס, כך ששינוי סיסמה נשמר). מחזיר True אם נוצר."""
+    init_db()
+    with closing(_connect()) as conn, conn:
+        cursor = conn.execute("""INSERT OR IGNORE INTO users (username, display_name, role, password_hash, created_at)
+                                 VALUES (?, ?, ?, ?, ?)""", (username, display_name, role, password_hash, _now()))
+    return cursor.rowcount > 0
+
+
+def set_password_hash(username: str, password_hash: str) -> None:
+    init_db()
+    with closing(_connect()) as conn, conn:
+        conn.execute("UPDATE users SET password_hash = ? WHERE username = ?", (password_hash, username))
+
+
+def _token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def create_token(username: str, hours: int = 12) -> str:
+    """אסימון התחברות אקראי (נשמר רק כגיבוב) - כדי שרענון הדף לא ינתק את המשתמש."""
+    init_db()
+    token = secrets.token_urlsafe(32)
+    expires = (datetime.now() + timedelta(hours=hours)).isoformat(timespec="seconds")
+    with closing(_connect()) as conn, conn:
+        conn.execute("DELETE FROM auth_tokens WHERE expires_at < ?", (_now(),))
+        conn.execute("INSERT INTO auth_tokens (token_hash, username, expires_at) VALUES (?, ?, ?)",
+                     (_token_hash(token), username, expires))
+    return token
+
+
+def user_for_token(token: str) -> dict | None:
+    if not token:
+        return None
+    init_db()
+    with closing(_connect()) as conn:
+        row = conn.execute("""SELECT u.username, u.display_name, u.role FROM auth_tokens t
+                              JOIN users u ON u.username = t.username
+                              WHERE t.token_hash = ? AND t.expires_at >= ?""",
+                           (_token_hash(token), _now())).fetchone()
+    return dict(row) if row else None
+
+
+def delete_token(token: str) -> None:
+    init_db()
+    with closing(_connect()) as conn, conn:
+        conn.execute("DELETE FROM auth_tokens WHERE token_hash = ?", (_token_hash(token),))
+
+
+def session_owner(session_id: str) -> str | None:
+    init_db()
+    with closing(_connect()) as conn:
+        row = conn.execute("SELECT username FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
+    return row["username"] if row else None
+
+
+def claim_session(session_id: str, username: str) -> bool:
+    """משייך שיחה למשתמש (ויוצר אותה אם אינה קיימת). נכשל אם היא כבר שייכת למשתמש אחר או חסרת בעלים."""
+    init_db()
+    if not session_exists(session_id):
+        save_state(ConversationState(session_id=session_id))
+        with closing(_connect()) as conn, conn:
+            conn.execute("UPDATE sessions SET username = ? WHERE session_id = ?", (username, session_id))
+        return True
+    return session_owner(session_id) == username
+
+
+def list_user_sessions(username: str) -> list[dict]:
+    """היסטוריית השיחות של משתמש, מהאחרונה לראשונה. שיחה בלי הודעות של העובד (רק פתיחה) לא נכללת."""
+    init_db()
+    with closing(_connect()) as conn:
+        rows = conn.execute("""SELECT session_id, messages_json, created_at, updated_at FROM sessions
+                               WHERE username = ? ORDER BY updated_at DESC""", (username,)).fetchall()
+    sessions = []
+    for row in rows:
+        messages = json.loads(row["messages_json"])
+        first_user = next((m["content"] for m in messages if m["role"] == "user"), None)
+        if first_user is None:
+            continue
+        sessions.append({"session_id": row["session_id"], "created_at": row["created_at"],
+                         "updated_at": row["updated_at"], "preview": first_user[:80],
+                         "messages": sum(1 for m in messages if m["role"] == "user")})
+    return sessions
 
 
 # --- שאלות לנציג ---

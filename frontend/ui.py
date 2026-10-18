@@ -54,8 +54,23 @@ BOT_AVATAR = _find_bot_image()
 
 
 def avatar_for(role: str) -> str | None:
-    """תמונת הבוט (images/bot-image.jpg) בבועות של הבוט; למשתמש נשארת ברירת המחדל."""
+    """תמונת הבוט (images/bot-image.jpg) בבועות של הבוט. בבועות העובדת נשארת ברירת המחדל של Streamlit
+    (st.chat_message לא מקבל אות עברית כאווטאר), והיא מוחלפת באות הראשונה של שמה ב-CSS: ראו user_avatar_css."""
     return BOT_AVATAR if role == "assistant" and os.path.exists(BOT_AVATAR) else None
+
+
+def user_avatar_css() -> str:
+    """CSS שמציג בעיגול של העובדת את האות הראשונה של שמה (במקום האייקון הכללי)."""
+    user = st.session_state.get("user") or {}
+    name = (user.get("display_name") or "").strip()
+    if not name:
+        return ""
+    letter = json.dumps(name[0], ensure_ascii=False)    # מחרוזת CSS בטוחה (בלי הימלטות JSON שאינה חוקית ב-CSS)
+    return ("<style>[data-testid='stChatMessageAvatarUser'] { position: relative; }"
+            "[data-testid='stChatMessageAvatarUser'] > * { visibility: hidden; }"
+            "[data-testid='stChatMessageAvatarUser']::after { content: " + letter + "; position: absolute; inset: 0; "
+            "display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; "
+            "font-size: 1.6rem; }</style>")
 
 
 _AMOUNT_RE = re.compile(r"(⁦[^⁩]*⁩)|(\d[\d,]*(?:\.\d+)?\s?₪)")
@@ -95,6 +110,9 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-
 .st-key-topbar a, .st-key-topbar .nav-pill { background: rgba(255,255,255,.16); border-radius: 999px; padding: .3rem 1rem;
                                              text-decoration: none; justify-content: center; text-align: center; }
 .st-key-topbar a:hover { background: rgba(255,255,255,.32); }
+.st-key-topbar a, .st-key-topbar .nav-pill { white-space: nowrap; font-size: .92rem; padding: .3rem .7rem; }
+.st-key-topbar button { background: rgba(255,255,255,.16); border: 0; color: #fff; border-radius: 999px; white-space: nowrap; }
+.st-key-topbar button:hover { background: rgba(255,255,255,.32); color: #fff; }
 .st-key-topbar .nav-pill.active { background: #fff; color: var(--primary); font-weight: 700; }
 
 /* כפתור העתקה מתחת לכל בועת הודעה: הסוכן - בצד שמאל, העובדת - בצד ימין */
@@ -209,15 +227,17 @@ if (!doc.__copyButtons) {
 
 def setup_page() -> None:
     st.markdown(CSS, unsafe_allow_html=True)
+    st.markdown(user_avatar_css(), unsafe_allow_html=True)
+    emit_cookie_changes()
     st.html(f"<script>{COPY_BUTTON_JS}</script>", unsafe_allow_javascript=True)   # כפתור "העתקה" בכל הודעה בשיחה
 
 
-def topbar(pages: list, current) -> None:
-    """הבאנר העליון: קבוע בראש המסך תמיד, וכפתורי הניווט (מסך עובד / מסך נציג) עליו.
-    pages - דפי st.navigation לפי הסדר [עובד, נציג]; current - הדף הפעיל (מסומן בלבן, ולא כקישור).
-    הקיבוע נעשה ב-CSS לפי המפתח "topbar"."""
+def topbar(pages: list, current, user: dict | None = None) -> None:
+    """הבאנר העליון: קבוע בראש המסך תמיד, וכפתורי הניווט עליו (רק המסכים המותרים לתפקיד המשתמש).
+    pages - דפי st.navigation המותרים; current - הדף הפעיל (מסומן בלבן, ולא כקישור).
+    כשמשתמש מחובר: כפתור "יציאה". הקיבוע נעשה ב-CSS לפי המפתח "topbar"."""
     with st.container(key="topbar"):
-        title, mid, nav = st.columns([4, 3, 3], vertical_alignment="center")
+        title, mid, nav = st.columns([3.2, 2.6, 4.2], vertical_alignment="center")
         title.markdown("<div class='bar-title'>🚗 יועץ הרכב של שטראוס</div>"
                        "<div class='bar-sub'>מה יקרה לנטו שלי אם אחליף רכב, אעבור לרכב חשמלי או אוותר על הרכב?</div>",
                        unsafe_allow_html=True)
@@ -228,12 +248,16 @@ def topbar(pages: list, current) -> None:
             tagline.markdown("<div class='bar-title'>היועץ שלך</div><div class='bar-sub'>שואלים אותי הכול על הנטו</div>",
                              unsafe_allow_html=True)
         with nav:
-            for column, page in zip(st.columns(len(pages)), pages):
+            with_logout = bool(user and user.get("role") != "both")
+            columns = st.columns(len(pages) + (1 if with_logout else 0))
+            for column, page in zip(columns, pages):
                 if page.title == current.title:
                     column.markdown(f"<div class='nav-pill active'>{page.icon} {html.escape(page.title)}</div>",
                                     unsafe_allow_html=True)
                 else:
                     column.page_link(page, label=page.title, icon=page.icon, use_container_width=True)
+            if with_logout and columns[-1].button("יציאה", key="logout_button", use_container_width=True):
+                logout()
 
 
 def _rate(value) -> str:
@@ -317,20 +341,128 @@ def render_state_card(state) -> None:
     st.markdown(state_card_html(state), unsafe_allow_html=True)
 
 
+def _owner_for_sessions() -> str | None:
+    """שם המשתמש שאליו שייכות השיחות, או None כשההתחברות כבויה (פיתוח מקומי)."""
+    user = st.session_state.get("user")
+    return user["username"] if user and user.get("role") != "both" else None
+
+
 def get_session_id() -> str:
-    """מזהה השיחה נשמר ב-URL (?sid=...) - לכן רענון העמוד ממשיך את אותה שיחה."""
+    """מזהה השיחה נשמר ב-URL (?sid=...) - לכן רענון העמוד ממשיך את אותה שיחה.
+    כשמחוברים: מזהה ששייך למשתמש אחר (או שיחה ישנה בלי בעלים) לא נטען - נפתחת במקומו שיחה של המשתמש
+    (האחרונה שלו, או חדשה). כל שיחה חדשה משויכת למשתמש."""
+    import db
+    owner = _owner_for_sessions()
     sid = st.query_params.get("sid") or st.session_state.get("sid")
+    if sid and owner and not db.claim_session(sid, owner):
+        sid = None
+    if not sid and owner:
+        history = db.list_user_sessions(owner)
+        sid = history[0]["session_id"] if history else None
     if not sid:
         sid = uuid.uuid4().hex[:12]
+        if owner:
+            db.claim_session(sid, owner)
     st.session_state["sid"] = sid
     st.query_params["sid"] = sid
     return sid
 
 
 def new_session() -> None:
-    st.session_state.pop("sid", None)
+    """שיחה חדשה: מזהה חדש (ולא "האחרונה של המשתמש")."""
+    sid = uuid.uuid4().hex[:12]
+    st.session_state["sid"] = sid
     st.session_state.pop("chat_error", None)
+    st.query_params["sid"] = sid
+
+
+# ---------------------------------------------------------------- התחברות
+
+COOKIE_NAME = "strauss_auth"
+COOKIE_HOURS = 12
+
+
+def _cookie_script(value: str, max_age: int) -> str:
+    secure = "; Secure" if os.environ.get("RENDER") else ""
+    return ("<script>(() => { window.parent.document.cookie = "
+            f"'{COOKIE_NAME}={value}; path=/; max-age={max_age}; SameSite=Lax{secure}'; }})();</script>")
+
+
+def current_user() -> dict | None:
+    """המשתמש המחובר: מהסשן, ואחרי רענון - מהעוגייה (אסימון אקראי שנשמר רק כגיבוב במסד).
+    כשההתחברות כבויה (AUTH_DISABLED=1) מחזיר משתמש מקומי שרואה את כל המסכים."""
+    import auth
+    import db
+    if not auth.auth_enabled():
+        st.session_state.setdefault("user", {"username": "local", "display_name": "מקומי", "role": "both"})
+        return st.session_state["user"]
+    if st.session_state.get("user"):
+        return st.session_state["user"]
+    try:
+        token = st.context.cookies.get(COOKIE_NAME)
+    except Exception:                      # סביבה בלי גישה לעוגיות (למשל בדיקות)
+        token = None
+    user = db.user_for_token(token) if isinstance(token, str) and token else None
+    if user:
+        st.session_state["user"] = user
+        st.session_state["auth_token"] = token
+    return user
+
+
+def require_role(*roles: str) -> dict:
+    """הגנה בכניסה למסך: רק תפקידים מותרים (גם אם מישהו הקליד כתובת של מסך שאינו שלו)."""
+    user = st.session_state.get("user")
+    if not user or user.get("role") not in (*roles, "both"):
+        st.error("אין הרשאה למסך הזה.")
+        st.stop()
+    return user
+
+
+def render_login() -> None:
+    """מסך כניסה (שם משתמש וסיסמה). אחרי כניסה מוצלחת המשתמש נשמר בסשן ובעוגייה."""
+    import auth
+    import db
+    _, middle, _ = st.columns([1, 1.2, 1])
+    with middle:
+        if avatar_for("assistant"):
+            st.image(avatar_for("assistant"), width=110)
+        st.markdown("### כניסה ליועץ הרכב של שטראוס")
+        with st.form("login", border=True):
+            username = st.text_input("שם משתמש", key="login_username")
+            password = st.text_input("סיסמה", type="password", key="login_password")
+            submitted = st.form_submit_button("כניסה", type="primary", use_container_width=True)
+        if submitted:
+            try:
+                user = auth.authenticate(username, password)
+            except auth.LoginError as error:
+                st.error(str(error))
+            else:
+                token = db.create_token(user["username"], COOKIE_HOURS)
+                st.session_state["user"] = user
+                st.session_state["auth_token"] = token
+                st.session_state["set_cookie"] = token
+                st.rerun()
+
+
+def logout() -> None:
+    import db
+    token = st.session_state.pop("auth_token", None)
+    if token:
+        db.delete_token(token)
+    for key in ("user", "sid", "set_cookie", "chat_error"):
+        st.session_state.pop(key, None)
+    st.session_state["clear_cookie"] = True
     st.query_params.clear()
+    st.rerun()
+
+
+def emit_cookie_changes() -> None:
+    """כותב / מוחק את עוגיית ההתחברות בדפדפן (פעם אחת אחרי כניסה או יציאה)."""
+    token = st.session_state.pop("set_cookie", None)
+    if token:
+        st.html(_cookie_script(token, COOKIE_HOURS * 3600), unsafe_allow_javascript=True)
+    elif st.session_state.pop("clear_cookie", None):
+        st.html(_cookie_script("", 0), unsafe_allow_javascript=True)
 
 
 def _money(value) -> str:
@@ -491,27 +623,6 @@ def _copy_button_html(text: str) -> str:
 def typing_status_html(label: str) -> str:
     """סטטוס המתנה עם אפקט כתיבה אות אחרי אות (אנימציית CSS; כל טקסט חדש מתחיל את האנימציה מחדש)."""
     return f"<span class='typing-status' style='--n:{max(len(label), 1)}'>{html.escape(label)}</span>"
-
-
-def require_representative_login() -> None:
-    """מגן סיסמה על מסך הנציג. פעיל רק כשמוגדר REP_PASSWORD (בענן חובה להגדיר; מקומית אפשר בלי).
-    בלי סיסמה נכונה המסך נעצר כאן ולא מציג שאלות או נתוני שכר."""
-    import hmac
-
-    from dotenv import load_dotenv
-    load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
-    password = os.environ.get("REP_PASSWORD", "")
-    if not password or st.session_state.get("rep_authenticated"):
-        return
-    st.subheader("כניסת נציג")
-    entered = st.text_input("סיסמה", type="password", key="rep_password_input")
-    if st.button("כניסה", type="primary", key="rep_login"):
-        if hmac.compare_digest(entered.encode(), password.encode()):
-            st.session_state["rep_authenticated"] = True
-            st.rerun()
-        else:
-            st.error("סיסמה שגויה")
-    st.stop()
 
 
 def render_comparison(result: dict, stale: bool = False) -> None:

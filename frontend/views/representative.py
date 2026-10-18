@@ -5,9 +5,9 @@ import streamlit as st
 
 import db
 from agent_tools import REP_FIELDS
-from ui import require_representative_login
+from ui import require_role
 
-require_representative_login()           # אם הוגדרה סיסמה (REP_PASSWORD) - בלעדיה אין גישה לשאלות ולנתונים
+require_role("rep")                     # רק נציגים (התחברות עם שם משתמש וסיסמה)
 st.subheader("מסך נציג תחבורה")
 
 
