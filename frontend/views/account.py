@@ -5,9 +5,9 @@ import auth
 import db
 from ui import logout, render_history_sidebar, require_role
 
-user = require_role("employee", "rep")
+user = require_role("employee", "rep", "admin")
 st.subheader(f"שלום {user['display_name']}")
-st.caption(f"שם משתמש: {user['username']} · תפקיד: {'עובד' if user['role'] == 'employee' else 'נציג תחבורה'}")
+st.caption(f"שם משתמש: {user['username']} · תפקיד: {auth.ROLE_LABELS.get(user['role'], '')}")
 
 if user["role"] == "employee":
     render_history_sidebar(st.session_state.get("sid"))     # היסטוריית השיחות (כולל שינוי שם ומחיקה) בסרגל הצד
@@ -31,7 +31,7 @@ if st.session_state["account_form"] == "username":
         st.caption("שם המשתמש משמש לכניסה. השיחות וההיסטוריה שלך נשמרות. נדרשת הסיסמה הנוכחית.")
         new_username = st.text_input("שם משתמש חדש")
         password = st.text_input("סיסמה נוכחית", type="password")
-        submit_col, cancel_col, _ = st.columns([1, 1, 2])
+        submit_col, _, cancel_col = st.columns([1, 2, 1])
         submitted = submit_col.form_submit_button("עדכון שם משתמש", type="primary")
         cancelled = cancel_col.form_submit_button("ביטול")
     if cancelled:
@@ -53,7 +53,7 @@ if st.session_state["account_form"] == "password":
         old = st.text_input("סיסמה נוכחית", type="password")
         new = st.text_input("סיסמה חדשה", type="password")
         again = st.text_input("אימות סיסמה חדשה", type="password")
-        submit_col, cancel_col, _ = st.columns([1, 1, 2])
+        submit_col, _, cancel_col = st.columns([1, 2, 1])
         submitted = submit_col.form_submit_button("עדכון סיסמה", type="primary")
         cancelled = cancel_col.form_submit_button("ביטול")
     if cancelled:
