@@ -1,0 +1,31 @@
+# "שעון מעורר": פנייה לאתר כל כמה דקות כדי שהשירות החינמי ב-Render לא יירדם (הוא נרדם אחרי כ-15 דקות בלי פניות).
+# הגדרה חד-פעמית: ב-GitHub -> Settings -> Secrets and variables -> Actions -> Variables ->
+# New repository variable: שם APP_URL, ערך כתובת האתר ב-Render (למשל https://strauss-car-advisor.onrender.com).
+# בלי המשתנה, הזרימה לא עושה כלום.
+name: keep-alive
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"      # כל 10 דקות (GitHub עשוי לאחר ריצות מתוזמנות בכמה דקות)
+  workflow_dispatch:             # אפשר גם להפעיל ידנית מלשונית Actions
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    if: ${{ vars.APP_URL != '' }}
+    steps:
+      - name: Ping the app
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+        run: |
+          # אחרי שינה האתר צריך כדקה כדי לעלות, לכן עד 5 ניסיונות עם המתנה
+          for i in 1 2 3 4 5; do
+            if curl -fsS --max-time 90 "${APP_URL%/}/_stcore/health"; then
+              echo; echo "האתר ער"
+              exit 0
+            fi
+            echo "ניסיון $i נכשל, ממתין..."
+            sleep 20
+          done
+          echo "האתר לא ענה"
+          exit 1

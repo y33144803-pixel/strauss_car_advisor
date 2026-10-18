@@ -93,6 +93,10 @@ docker compose up --build
 
 מגבלה: השירות חייב לרוץ כמופע אחד בלבד (SQLite ומצב השיחה אינם מתאימים לכמה מופעים במקביל).
 
+### שעון מעורר (שירות חינמי שלא נרדם)
+
+הקובץ `.github/workflows/keep-alive.yml` שולח פנייה לאתר כל כ-10 דקות, כדי שהשירות החינמי ב-Render לא יירדם. הגדרה חד-פעמית ב-GitHub: Settings → Secrets and variables → Actions → Variables → New repository variable, בשם `APP_URL` ועם כתובת האתר ב-Render. אפשר להפעיל גם ידנית מלשונית Actions. חלופה בלי GitHub: שירות ניטור חינמי כמו UptimeRobot, שפונה לכתובת `‏<כתובת האתר>/_stcore/health` כל 5 דקות. הפנייה מונעת שינה אבל לא שומרת נתונים: שיחות עדיין נמחקות כשהשירות מופעל מחדש (למשל בפריסה חדשה).
+
 ## בדיקות
 
 ```bash
