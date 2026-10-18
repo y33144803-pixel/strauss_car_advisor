@@ -586,3 +586,24 @@ def test_account_forms_have_cancel_buttons(account_users):
         assert not at.text_input                                     # ביטול סוגר בלי לשנות כלום
     import db
     assert db.get_user("dana")
+
+
+def test_data_card_becomes_a_collapsed_dropdown_while_comparison_is_shown():
+    fill_to_comparison()
+    only_data = employee_app(show_data=True)
+    assert not only_data.expander                                      # בלי השוואה: הנתונים מוצגים רגיל
+    assert "הנתונים שנקלטו עד כה" in sidebar_text(only_data)
+
+    both = employee_app(show_comparison=True, show_data=True)
+    assert [e.label for e in both.expander] == ["הצג נתונים"]          # עם השוואה: תיבה נפתחת
+    assert both.expander[0].proto.expanded is False                     # סגורה כברירת מחדל
+    assert "הנתונים שנקלטו עד כה" in " ".join(m.value for m in both.expander[0].markdown)
+
+    back = employee_app(show_data=True)                                 # ההשוואה נעלמה: חוזר למצב הרגיל
+    assert not back.expander and "הנתונים שנקלטו עד כה" in sidebar_text(back)
+
+
+def test_greeting_asks_what_the_employee_wants_to_do():
+    import agent
+    assert agent.GREETING.rstrip().endswith("מה תרצה/י לעשות?")
+    assert "נתחיל מהבסיס" not in agent.GREETING

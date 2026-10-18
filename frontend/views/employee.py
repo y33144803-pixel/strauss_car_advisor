@@ -72,7 +72,13 @@ if side_open:
     chat_col, result_col = st.columns([3, 2], gap="medium")
     if show_data:
         with result_col:
-            data_slot = st.empty()
+            if show_comparison:
+                # כשההשוואה מוצגת, הנתונים נאספים לתיבה נפתחת "הצג נתונים" (סגורה כברירת מחדל);
+                # כשההשוואה נעלמת הם חוזרים להיראות כרגיל
+                with st.expander("הצג נתונים", expanded=False):
+                    data_slot = st.empty()
+            else:
+                data_slot = st.empty()
         draw_state_card()
 else:
     chat_col, result_col = st.container(), None

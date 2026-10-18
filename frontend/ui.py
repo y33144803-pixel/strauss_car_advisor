@@ -119,8 +119,7 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-
                  box-shadow: 0 6px 18px rgba(80,20,110,.35); direction: rtl; }
 .st-key-topbar img { border: 3px solid rgba(255,255,255,.65); box-shadow: 0 3px 10px rgba(0,0,0,.25); }
 .st-key-topbar .bar-title { text-shadow: 0 1px 3px rgba(0,0,0,.25); }
-.st-key-topbar .user-chip { display: inline-flex; align-items: center; gap: 10px; background: rgba(255,255,255,.18);
-                            border: 1px solid rgba(255,255,255,.35); border-radius: 999px; padding: 5px 16px 5px 6px; }
+.st-key-topbar .user-chip { display: inline-flex; align-items: center; gap: 10px; }
 .st-key-topbar .user-chip .dot { width: 34px; height: 34px; border-radius: 50%; background: #fff; color: var(--primary);
                                  display: inline-flex; align-items: center; justify-content: center; font-weight: 800;
                                  font-size: 1.1rem; }
@@ -306,7 +305,7 @@ def topbar(pages: list, current, user: dict | None = None) -> None:
                 if user and user.get("role") != "both":      # (הגדרות ויציאה בסרגל הצד) - רק מי שמחובר
                     name = (user.get("display_name") or user["username"]).strip()
                     role = "עובד" if user.get("role") == "employee" else "נציג תחבורה"
-                    st.markdown("<div style='display:flex; justify-content:flex-end; direction:ltr'>"
+                    st.markdown("<div style='display:flex; justify-content:flex-start; direction:ltr'>"
                                 "<div class='user-chip' style='direction:rtl'>"
                                 f"<span class='dot'>{html.escape(name[0])}</span>"
                                 f"<span class='who'>שלום, {html.escape(name)}"
