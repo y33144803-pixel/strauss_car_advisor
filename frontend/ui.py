@@ -418,6 +418,24 @@ def require_role(*roles: str) -> dict:
     return user
 
 
+def login_prefill() -> tuple[str, str]:
+    """שם משתמש וסיסמה שימולאו מראש בשדות הכניסה (נוחות לדמו), לפי LOGIN_PREFILL_USER.
+    רק משתמש בתפקיד עובד; נציג לא ימולא מראש לעולם. הסיסמה נלקחת מהגדרת AUTH_USERS.
+    שימו לב: הסיסמה נשלחת לדפדפן, ולכן כל מי שיפתח את האתר יוכל להיכנס כמשתמש הזה."""
+    import auth
+    wanted = os.environ.get("LOGIN_PREFILL_USER", "").strip()
+    if not wanted:
+        return "", ""
+    try:
+        users = auth.parse_users(os.environ.get("AUTH_USERS", ""))
+    except ValueError:
+        return "", ""
+    for user in users:
+        if user["username"] == wanted and user["role"] == "employee":
+            return user["username"], user["password"]
+    return "", ""
+
+
 def render_login() -> None:
     """מסך כניסה (שם משתמש וסיסמה). אחרי כניסה מוצלחת המשתמש נשמר בסשן ובעוגייה."""
     import auth
@@ -428,8 +446,9 @@ def render_login() -> None:
             st.image(avatar_for("assistant"), width=110)
         st.markdown("### כניסה ליועץ הרכב של שטראוס")
         with st.form("login", border=True):
-            username = st.text_input("שם משתמש", key="login_username")
-            password = st.text_input("סיסמה", type="password", key="login_password")
+            default_user, default_password = login_prefill()
+            username = st.text_input("שם משתמש", value=default_user, key="login_username")
+            password = st.text_input("סיסמה", value=default_password, type="password", key="login_password")
             submitted = st.form_submit_button("כניסה", type="primary", use_container_width=True)
         if submitted:
             try:

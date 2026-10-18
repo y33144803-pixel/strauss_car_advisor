@@ -418,3 +418,23 @@ def test_conversations_are_private_to_their_owner(auth_on):
     other.run()
     assert not any("הנתונים הסודיים" in m.value for m in other.markdown)
     assert other.query_params["sid"] != "dana-chat"
+
+
+def test_login_fields_can_be_prefilled_with_an_employee_for_demos(auth_on, monkeypatch):
+    monkeypatch.setenv("LOGIN_PREFILL_USER", "dana")
+    at = app_with_login()
+    assert at.text_input[0].value == "dana" and at.text_input[1].value == "secret-1"
+    at.button[0].click().run()                                       # לחיצה על "כניסה" בלי להקליד כלום
+    assert at.chat_input and not at.exception
+
+
+def test_representative_is_never_prefilled(auth_on, monkeypatch):
+    monkeypatch.setenv("LOGIN_PREFILL_USER", "moshe")                # נציג - לא ימולא מראש
+    at = app_with_login()
+    assert at.text_input[0].value == "" and at.text_input[1].value == ""
+
+
+def test_login_fields_are_empty_by_default(auth_on, monkeypatch):
+    monkeypatch.setenv("LOGIN_PREFILL_USER", "")                 # (delenv לא מספיק: .env המקומי היה נטען שוב)
+    at = app_with_login()
+    assert at.text_input[0].value == "" and at.text_input[1].value == ""
