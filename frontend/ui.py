@@ -53,6 +53,19 @@ def _find_bot_image() -> str:
 BOT_AVATAR = _find_bot_image()
 
 
+def _find_login_image() -> str | None:
+    """תמונת מסך הכניסה: images/login-image.* ; אם אין - תמונת הבוט."""
+    folder = os.path.join(os.path.dirname(BACKEND_DIR), "images")
+    for extension in ("jpg", "png", "jpeg", "webp"):
+        path = os.path.join(folder, f"login-image.{extension}")
+        if os.path.exists(path):
+            return path
+    return BOT_AVATAR if os.path.exists(BOT_AVATAR) else None
+
+
+LOGIN_IMAGE = _find_login_image()
+
+
 def avatar_for(role: str) -> str | None:
     """תמונת הבוט (images/bot-image.jpg) בבועות של הבוט. בבועות העובדת נשארת ברירת המחדל של Streamlit
     (st.chat_message לא מקבל אות עברית כאווטאר), והיא מוחלפת באות הראשונה של שמה ב-CSS: ראו user_avatar_css."""
@@ -144,6 +157,16 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 
 /* תיבת הכתיבה באותו רוחב כמו עמודת השיחה (3 מתוך 5, פחות הרווח בין העמודות), צמודה לצד הימני */
 [data-testid="stBottomBlockContainer"] [data-testid="stChatInput"] { width: calc((100% - 2rem) * 0.6); margin-right: 0; margin-left: auto; }
+
+/* מסך הכניסה: באנר, כרטיס טופס ותמונה; בלי סרגל צד */
+.login-hero { background: linear-gradient(100deg, var(--accent), var(--primary)); color: #fff; border-radius: 18px;
+              padding: 22px 28px; margin: 0 0 18px 0; box-shadow: 0 6px 20px rgba(124,58,168,.25); direction: rtl; }
+.login-hero .t { font-size: 1.7rem; font-weight: 800; line-height: 1.25; }
+.login-hero .s { font-size: 1rem; opacity: .95; margin-top: 4px; }
+.st-key-logincard { background: #fff; border: 1px solid #E6DDF0; border-radius: 18px; padding: 26px 24px;
+                    box-shadow: 0 8px 24px rgba(0,0,0,.07); }
+.st-key-logincard h3 { margin-top: 0; }
+.st-key-loginimage img { border-radius: 18px; }
 
 /* פאנל הצד: "הנתונים שנקלטו עד כה" */
 [data-testid="stSidebarContent"] { padding-top: 6.4rem; }
@@ -437,30 +460,39 @@ def login_prefill() -> tuple[str, str]:
 
 
 def render_login() -> None:
-    """מסך כניסה (שם משתמש וסיסמה). אחרי כניסה מוצלחת המשתמש נשמר בסשן ובעוגייה."""
+    """מסך כניסה (שם משתמש וסיסמה): באנר, כרטיס עם הטופס ותמונה. אחרי כניסה מוצלחת המשתמש נשמר בסשן ובעוגייה."""
     import auth
     import db
-    _, middle, _ = st.columns([1, 1.2, 1])
-    with middle:
-        if avatar_for("assistant"):
-            st.image(avatar_for("assistant"), width=110)
-        st.markdown("### כניסה ליועץ הרכב של שטראוס")
-        with st.form("login", border=True):
-            default_user, default_password = login_prefill()
-            username = st.text_input("שם משתמש", value=default_user, key="login_username")
-            password = st.text_input("סיסמה", value=default_password, type="password", key="login_password")
-            submitted = st.form_submit_button("כניסה", type="primary", use_container_width=True)
-        if submitted:
-            try:
-                user = auth.authenticate(username, password)
-            except auth.LoginError as error:
-                st.error(str(error))
-            else:
-                token = db.create_token(user["username"], COOKIE_HOURS)
-                st.session_state["user"] = user
-                st.session_state["auth_token"] = token
-                st.session_state["set_cookie"] = token
-                st.rerun()
+    st.markdown("<style>[data-testid='stSidebar'], [data-testid='stSidebarCollapsedControl'] { display: none; } "
+                ".block-container { padding-top: 2rem; }</style>", unsafe_allow_html=True)
+    st.markdown("<div class='login-hero'><div class='t'>🚗 יועץ הרכב של שטראוס</div>"
+                "<div class='s'>מה יקרה לנטו שלי אם אחליף רכב, אעבור לרכב חשמלי או אוותר על הרכב?</div></div>",
+                unsafe_allow_html=True)
+    form_col, image_col = st.columns([1, 1], gap="large", vertical_alignment="center")
+    with form_col:
+        with st.container(key="logincard"):
+            st.markdown("### כניסה למערכת")
+            st.caption("היכנסו עם שם המשתמש והסיסמה שקיבלתם.")
+            with st.form("login", border=False):
+                default_user, default_password = login_prefill()
+                username = st.text_input("שם משתמש", value=default_user, key="login_username")
+                password = st.text_input("סיסמה", value=default_password, type="password", key="login_password")
+                submitted = st.form_submit_button("כניסה", type="primary", use_container_width=True)
+            if submitted:
+                try:
+                    user = auth.authenticate(username, password)
+                except auth.LoginError as error:
+                    st.error(str(error))
+                else:
+                    token = db.create_token(user["username"], COOKIE_HOURS)
+                    st.session_state["user"] = user
+                    st.session_state["auth_token"] = token
+                    st.session_state["set_cookie"] = token
+                    st.rerun()
+    with image_col:
+        if LOGIN_IMAGE:
+            with st.container(key="loginimage"):
+                st.image(LOGIN_IMAGE, width="stretch")
 
 
 def logout() -> None:

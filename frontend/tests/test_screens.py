@@ -382,7 +382,7 @@ def app_with_login(username=None, password=None) -> AppTest:
 def test_login_page_is_shown_before_signing_in(auth_on):
     at = app_with_login()
     assert not at.exception
-    assert any("כניסה ליועץ הרכב" in m.value for m in at.markdown)
+    assert any("כניסה למערכת" in m.value for m in at.markdown)
     assert not at.chat_input                                         # בלי כניסה אין שיחה
 
 
