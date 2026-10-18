@@ -94,7 +94,7 @@ def name_matches(query: str, make_name: str, commercial_name: str) -> bool:
     return bool(tokens) and all(t in words if len(t) < 3 else t in haystack for t in tokens)
 
 
-def search_by_name(commercial_name: str, registration_year=None, tax_year=2026, limit: int = 10) -> list[dict]:
+def search_by_name(commercial_name: str, registration_year=None, *, tax_year, limit: int = 10) -> list[dict]:
     """חיפוש מועמדים לפי שם מסחרי (ושנת רישום). לא מחזיר שווי שימוש סופי - רק אפשרויות לבחירת העובד."""
     df = load_db()
     mask = df["tax_year"] == str(tax_year)

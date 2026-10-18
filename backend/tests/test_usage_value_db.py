@@ -50,5 +50,5 @@ def test_missing_record_returns_error_not_guess():
 
 
 def test_search_by_name_returns_candidates():
-    candidates = search_by_name("corolla cross", registration_year=2025)
+    candidates = search_by_name("corolla cross", registration_year=2025, tax_year=2026)
     assert any(c["model_code"] == "00296" for c in candidates)
