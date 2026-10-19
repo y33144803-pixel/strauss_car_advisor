@@ -262,6 +262,11 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 COPY_BUTTON_JS = """
 (() => {                         // עטיפה: אחרת ההרצה השנייה של הסקריפט מצהירה שוב על doc ומקבלת שגיאה
 const doc = window.parent.document;
+// חזרה לדף מה-Back-Forward Cache של הדפדפן: החיבור לשרת כבר סגור והדף נשאר מקפא/ריק - טוענים אותו מחדש
+if (!window.parent.__bfReload) {
+  window.parent.__bfReload = true;
+  window.parent.addEventListener('pageshow', e => { if (e.persisted) window.parent.location.reload(); });
+}
 if (!doc.__copyButtons) {
   doc.__copyButtons = true;
   const add = () => doc.querySelectorAll('[data-testid="stChatMessage"]').forEach(msg => {

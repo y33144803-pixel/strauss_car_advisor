@@ -72,9 +72,9 @@ with tab_sessions:
             if chosen:
                 head, close = st.columns([5, 1], vertical_alignment="center")
                 head.caption("צפייה בלבד - אי אפשר לכתוב או לשנות שיחה של משתמש.")
-                if close.button("סגירת השיחה", key="admin_close_session", use_container_width=True):
-                    st.session_state["admin_session_pick"] = None
-                    st.rerun()
+                # הניקוי ב-callback: אי אפשר לשנות מפתח של ווידג'ט אחרי שהוא כבר צויר בהרצה הנוכחית
+                close.button("סגירת השיחה", key="admin_close_session", use_container_width=True,
+                             on_click=lambda: st.session_state.update(admin_session_pick=None))
                 st.markdown(user_avatar_css(by_id[chosen]["display_name"]), unsafe_allow_html=True)  # האות של הבעלים
                 for message in db.load_messages(chosen):
                     with st.chat_message(message["role"], avatar=avatar_for(message["role"])):

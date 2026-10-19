@@ -656,3 +656,17 @@ def test_rep_and_admin_have_no_sidebar_and_no_consent(auth_on):
     at = app_with_login("boss", "secret-9")
     assert any("stSidebar" in m.value for m in at.markdown)           # הסרגל מוסתר ב-CSS
     assert not any(b.key == "consent_button" for b in at.button)
+
+
+def test_admin_can_open_and_close_a_conversation():
+    import db
+    db.claim_session("adm-chat", "someone")
+    db.save_messages("adm-chat", [{"role": "assistant", "content": "שלום"},
+                                  {"role": "user", "content": "שאלה של עובד"}])
+    at = signed_in(AppTest.from_file(os.path.join(VIEWS, "admin.py"), default_timeout=30), role="admin").run()
+    at.selectbox(key="admin_session_pick").select("adm-chat").run()
+    assert not at.exception and any("שאלה של עובד" in m.value for m in at.markdown)
+    at.button(key="admin_close_session").click().run()
+    assert not at.exception
+    assert not any("שאלה של עובד" in m.value for m in at.markdown)       # השיחה נסגרה
+    assert not [b for b in at.button if b.key == "admin_close_session"]
