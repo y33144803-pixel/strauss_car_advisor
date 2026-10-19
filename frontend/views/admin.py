@@ -118,19 +118,19 @@ with tab_sessions:
             if not shown:
                 st.info("אין שיחות שמתאימות לסינון.")
             else:
-                widths = [1.3, 2.2, 1.5, 0.8, 1.7, 2.2, 0.9]
+                widths = [1.5, 1.3, 1.7, 0.8, 2.2, 2.2, 0.9]
                 header = st.columns(widths)
-                for column, label in zip(header, ["משתמש", "שיחה", "עודכנה", "הודעות", "נציג", "נצפתה לאחרונה", ""]):
+                for column, label in zip(header, ["עודכנה", "משתמש", "נציג", "הודעות", "שיחה", "נצפתה לאחרונה", ""]):
                     column.markdown(f"**{label}**" if label else " ")
                 for item in shown[:100]:
                     fresh = unseen(item)
                     with st.container(key=f"sessrow_{'new' if fresh else 'seen'}_{item['session_id']}"):
                         row = st.columns(widths, vertical_alignment="center")
-                        row[0].write(item["username"])
-                        row[1].write(item["title"])
-                        row[2].write(when(item["updated_at"]))
+                        row[0].write(when(item["updated_at"]))
+                        row[1].write(item["username"])
+                        row[2].write(rep_label(item, names))
                         row[3].write(str(item["messages"]))
-                        row[4].write(rep_label(item, names))
+                        row[4].write(item["title"])
                         if not item["viewed_at"]:
                             row[5].markdown("**טרם נצפתה**")
                         else:
