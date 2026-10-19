@@ -63,6 +63,9 @@ def init_db() -> None:
         columns = [row[1] for row in conn.execute("PRAGMA table_info(sessions)")]
         if "username" not in columns:                  # שיחות ישנות (לפני ההתחברות) נשארות בלי בעלים
             conn.execute("ALTER TABLE sessions ADD COLUMN username TEXT")
+        if "admin_viewed_at" not in columns:           # מתי מנהל צפה בשיחה לאחרונה, ומי
+            conn.execute("ALTER TABLE sessions ADD COLUMN admin_viewed_at TEXT")
+            conn.execute("ALTER TABLE sessions ADD COLUMN admin_viewed_by TEXT")
         if "title" not in columns:                     # שם שהמשתמש נתן לשיחה (אחרת מוצגת תחילת ההודעה הראשונה)
             conn.execute("ALTER TABLE sessions ADD COLUMN title TEXT")
         conn.execute("""
@@ -79,6 +82,9 @@ def init_db() -> None:
                 created_at TEXT NOT NULL,
                 answered_at TEXT
             )""")
+        rep_columns = [row[1] for row in conn.execute("PRAGMA table_info(rep_questions)")]
+        if "answered_by" not in rep_columns:           # שם המשתמש של הנציג שענה
+            conn.execute("ALTER TABLE rep_questions ADD COLUMN answered_by TEXT")
 
 
 # --- שיחות ---
@@ -157,6 +163,8 @@ def rename_user(old: str, new: str) -> bool:
         conn.execute("UPDATE users SET username = ? WHERE username = ?", (new, old))
         conn.execute("UPDATE auth_tokens SET username = ? WHERE username = ?", (new, old))
         conn.execute("UPDATE sessions SET username = ? WHERE username = ?", (new, old))
+        conn.execute("UPDATE rep_questions SET answered_by = ? WHERE answered_by = ?", (new, old))
+        conn.execute("UPDATE sessions SET admin_viewed_by = ? WHERE admin_viewed_by = ?", (new, old))
     return True
 
 
@@ -313,17 +321,28 @@ def list_user_sessions(username: str) -> list[dict]:
     return sessions
 
 
+def mark_session_viewed(session_id: str, admin_username: str) -> None:
+    """רושם שמנהל צפה בשיחה (תאריך ושם)."""
+    init_db()
+    with closing(_connect()) as conn, conn:
+        conn.execute("UPDATE sessions SET admin_viewed_at = ?, admin_viewed_by = ? WHERE session_id = ?",
+                     (_now(), admin_username, session_id))
+
+
 def list_all_sessions() -> list[dict]:
     """כל השיחות של כל המשתמשים (לצפייה בלבד, למנהל), מהאחרונה לראשונה. שיחה בלי הודעות של העובד לא נכללת.
-    לכל שיחה: שם תצוגה של הבעלים, וכמה שאלות הועברו בה לנציג (rep_total) וכמה מהן עדיין פתוחות (rep_open)."""
+    לכל שיחה: שם תצוגה של הבעלים; כמה שאלות הועברו בה לנציג (rep_total), כמה עדיין פתוחות (rep_open),
+    אילו נציגים ענו (reps - שמות משתמש); ומתי ועל ידי מי נצפתה לאחרונה (viewed_at / viewed_by)."""
     init_db()
     with closing(_connect()) as conn:
         rows = conn.execute("""SELECT s.session_id, s.username, s.messages_json, s.created_at, s.updated_at, s.title,
-                                      u.display_name,
+                                      s.admin_viewed_at, s.admin_viewed_by, u.display_name,
                                       (SELECT COUNT(*) FROM rep_questions q WHERE q.session_id = s.session_id
                                          AND q.status != 'cancelled') AS rep_total,
                                       (SELECT COUNT(*) FROM rep_questions q WHERE q.session_id = s.session_id
-                                         AND q.status = 'open') AS rep_open
+                                         AND q.status = 'open') AS rep_open,
+                                      (SELECT group_concat(DISTINCT q.answered_by) FROM rep_questions q
+                                         WHERE q.session_id = s.session_id AND q.answered_by IS NOT NULL) AS reps
                                FROM sessions s LEFT JOIN users u ON u.username = s.username
                                ORDER BY s.updated_at DESC""").fetchall()
     sessions = []
@@ -337,8 +356,19 @@ def list_all_sessions() -> list[dict]:
                          "created_at": row["created_at"], "updated_at": row["updated_at"],
                          "title": (row["title"] or "").strip() or first_user[:40],
                          "messages": sum(1 for m in messages if m["role"] == "user"),
-                         "rep_total": row["rep_total"], "rep_open": row["rep_open"]})
+                         "rep_total": row["rep_total"], "rep_open": row["rep_open"],
+                         "reps": [r for r in (row["reps"] or "").split(",") if r],
+                         "viewed_at": row["admin_viewed_at"], "viewed_by": row["admin_viewed_by"]})
     return sessions
+
+
+def list_session_questions(session_id: str) -> list[dict]:
+    """כל השאלות לנציג של שיחה אחת (למנהל), לפי סדר יצירה."""
+    init_db()
+    with closing(_connect()) as conn:
+        rows = conn.execute("SELECT * FROM rep_questions WHERE session_id = ? AND status != 'cancelled' ORDER BY id",
+                            (session_id,)).fetchall()
+    return [dict(row) for row in rows]
 
 
 def rename_session(session_id: str, username: str, title: str) -> bool:
@@ -394,13 +424,13 @@ def list_questions(status: str | None = "open") -> list[dict]:
 
 
 def answer_question(question_id: int, answer_value: float | None, effective_from: str | None = None,
-                    answer_note: str | None = None) -> None:
-    """הנציג עונה. השיחה של העובד תקלוט את התשובה בטעינה הבאה שלה."""
+                    answer_note: str | None = None, answered_by: str | None = None) -> None:
+    """הנציג עונה (answered_by - שם המשתמש שלו, נשמר לצורך מעקב). השיחה של העובד תקלוט את התשובה בטעינה הבאה."""
     init_db()
     with closing(_connect()) as conn, conn:
         conn.execute("""UPDATE rep_questions SET status = 'answered', answer_value = ?, effective_from = ?,
-                        answer_note = ?, answered_at = ? WHERE id = ? AND status = 'open'""",
-                     (answer_value, effective_from, answer_note, _now(), question_id))
+                        answer_note = ?, answered_at = ?, answered_by = ? WHERE id = ? AND status = 'open'""",
+                     (answer_value, effective_from, answer_note, _now(), answered_by, question_id))
 
 
 def answered_unapplied(session_id: str) -> list[dict]:

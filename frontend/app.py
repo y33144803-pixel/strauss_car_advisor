@@ -38,6 +38,27 @@ def load_users() -> int:
     return auth.seed_users()
 
 
+@st.cache_resource
+def warm_up() -> bool:
+    """טוען ברקע את המודולים הכבדים של הסוכן (llama-index, Gemini) כבר בעליית השרת, כשהמשתמש עוד על מסך
+    הכניסה. בלי זה הכניסה נתקעת כמה שניות (בשרת איטי - הרבה יותר) על ייבוא הספריות, ומסך הכניסה נשאר מתחת."""
+    import threading
+
+    def work() -> None:
+        try:
+            import actions  # noqa: F401
+            import agent  # noqa: F401
+            import agent_tools  # noqa: F401
+            from llama_index.core.llms import ChatMessage  # noqa: F401
+            from llama_index.llms.google_genai import GoogleGenAI  # noqa: F401
+        except Exception:
+            logging.getLogger("strauss.app").exception("החימום של המודולים נכשל (לא קריטי)")
+
+    threading.Thread(target=work, daemon=True).start()
+    return True
+
+
+warm_up()
 ui.reload_changed_modules()      # שינוי בקוד ה-backend בזמן שהשרת רץ נטען מחדש בלי להפעיל את השרת
 load_users()
 user = ui.current_user()

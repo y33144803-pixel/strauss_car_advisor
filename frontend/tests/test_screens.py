@@ -658,15 +658,36 @@ def test_rep_and_admin_have_no_sidebar_and_no_consent(auth_on):
     assert not any(b.key == "consent_button" for b in at.button)
 
 
-def test_admin_can_open_and_close_a_conversation():
+def test_admin_views_conversation_from_row_button_and_it_is_marked_viewed():
     import db
     db.claim_session("adm-chat", "someone")
     db.save_messages("adm-chat", [{"role": "assistant", "content": "שלום"},
                                   {"role": "user", "content": "שאלה של עובד"}])
     at = signed_in(AppTest.from_file(os.path.join(VIEWS, "admin.py"), default_timeout=30), role="admin").run()
-    at.selectbox(key="admin_session_pick").select("adm-chat").run()
-    assert not at.exception and any("שאלה של עובד" in m.value for m in at.markdown)
+    assert any("טרם נצפתה" in m.value for m in at.markdown)               # עוד לא נצפתה
+    at.button(key="view_adm-chat").click().run()
+    assert not at.exception and len(at.chat_message) == 2                  # נפתחה השיחה (שתי הודעות)
+    assert db.list_all_sessions()[0]["viewed_by"] == "tester"
     at.button(key="admin_close_session").click().run()
     assert not at.exception
-    assert not any("שאלה של עובד" in m.value for m in at.markdown)       # השיחה נסגרה
-    assert not [b for b in at.button if b.key == "admin_close_session"]
+    assert not at.chat_message                                            # נסגרה, חזרה לטבלה
+    assert not any("טרם נצפתה" in m.value for m in at.markdown)           # כעת נצפתה
+    assert any(b.key == "view_adm-chat" for b in at.button)
+
+
+def test_admin_filters_by_rep_who_answered_and_shows_their_name():
+    import db
+    import auth
+    auth.create_user("repone", "secret-1", "rep", "נציגה אחת")
+    auth.create_user("reptwo", "secret-1", "rep", "נציג שני")
+    for sid, rep in (("s-a", "repone"), ("s-b", "reptwo"), ("s-c", None)):
+        db.claim_session(sid, "someone")
+        db.save_messages(sid, [{"role": "assistant", "content": "שלום"}, {"role": "user", "content": f"שאלה {sid}"}])
+        if rep:
+            qid = db.create_question(sid, "new_participation", "הקשר", "סיכום")
+            db.answer_question(qid, 300, answered_by=rep)
+    assert {s["session_id"]: s["reps"] for s in db.list_all_sessions()} == {"s-a": ["repone"], "s-b": ["reptwo"], "s-c": []}
+    at = signed_in(AppTest.from_file(os.path.join(VIEWS, "admin.py"), default_timeout=30), role="admin").run()
+    at.multiselect(key="admin_f_reps").select("repone").run()
+    keys = {b.key for b in at.button}
+    assert "view_s-a" in keys and "view_s-b" not in keys and "view_s-c" not in keys

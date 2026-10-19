@@ -7,7 +7,7 @@ import db
 from agent_tools import REP_FIELDS
 from ui import require_role
 
-require_role("rep")                     # רק נציגים (התחברות עם שם משתמש וסיסמה)
+rep_user = require_role("rep")          # רק נציגים (התחברות עם שם משתמש וסיסמה)
 st.subheader("מסך נציג תחבורה")
 
 
@@ -39,7 +39,7 @@ def open_questions() -> None:
                                  if not free_text else "יש להזין סכום או הערה.")
                     else:
                         db.answer_question(q["id"], value, effective.strftime("%d/%m/%Y") if effective else None,
-                                           note or None)
+                                           note or None, answered_by=rep_user["username"])      # נשמר מי ענה
                         st.rerun(scope="app")
 
 
@@ -54,4 +54,5 @@ with st.expander("שאלות שנענו"):
         state = "נקלט בשיחה" if q["status"] == "applied" else "ממתין לקליטה בשיחה"
         answer = f"{q['answer_value']:,.0f} ₪" if q["answer_value"] is not None else (q["answer_note"] or "-")
         st.markdown(f"- #{q['id']} · {REP_FIELDS.get(q['missing_field'], q['missing_field'])} · "
-                    f"{answer}{when} · שיחה {q['session_id']} · {state}")
+                    f"{answer}{when} · שיחה {q['session_id']} · {state}"
+                    + (f" · ענה/תה: {q['answered_by']}" if q.get("answered_by") else ""))

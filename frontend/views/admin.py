@@ -5,6 +5,7 @@ import streamlit as st
 
 import auth
 import db
+from agent_tools import REP_FIELDS
 from ui import avatar_for, fix_bidi, require_role, user_avatar_css
 
 SORTS = {"עודכנו לאחרונה (מהחדש לישן)": ("updated_at", True), "עודכנו לאחרונה (מהישן לחדש)": ("updated_at", False),
@@ -13,34 +14,62 @@ SORTS = {"עודכנו לאחרונה (מהחדש לישן)": ("updated_at", Tru
 REP_FILTERS = ["הכול", "היתה שיחה עם נציג", "לא היתה שיחה עם נציג", "ממתינה לתשובת נציג"]
 
 
-def rep_label(item: dict) -> str:
+def rep_label(item: dict, names: dict) -> str:
     if item["rep_open"]:
         return "ממתינה לתשובה"
-    return f"היתה ({item['rep_total']})" if item["rep_total"] else "לא היתה"
+    if not item["rep_total"]:
+        return "לא היתה"
+    who = ", ".join(names.get(r, r) for r in item["reps"])
+    return f"היתה ({who})" if who else f"היתה ({item['rep_total']})"
 
 
 def when(value: str) -> str:
-    return value[:16].replace("T", " ")
+    """תאריך ושעה בעברית (יום/חודש/שנה), כיחידה אחת כדי שלא יתהפך בתוך טקסט מימין לשמאל."""
+    return "⁦" + datetime.fromisoformat(value).strftime("%d/%m/%Y %H:%M") + "⁩"
 
 
 user = require_role("admin")
 st.subheader("מסך ניהול")
+st.markdown("<style>[class*='st-key-sessrow_new_'] { background: #FFF3CD; border-radius: 10px; padding: 6px 10px; }"
+            "[class*='st-key-sessrow_seen_'] { background: #F3F3F7; border-radius: 10px; padding: 6px 10px; }</style>",
+            unsafe_allow_html=True)
 
 tab_sessions, tab_users = st.tabs(["שיחות", "משתמשים"])
 
+def open_session(session_id: str) -> None:
+    """callback של כפתור "צפייה": פותח את השיחה ורושם שהמנהל צפה בה."""
+    st.session_state["admin_open"] = session_id
+    db.mark_session_viewed(session_id, user["username"])
+
+
+def close_session() -> None:
+    st.session_state["admin_open"] = None
+
+
+def unseen(item: dict) -> bool:
+    """שיחה שלא נצפתה, או שהתעדכנה מאז הצפייה האחרונה."""
+    return not item["viewed_at"] or item["updated_at"] > item["viewed_at"]
+
+
 with tab_sessions:
+    names = {u["username"]: u["display_name"] for u in db.list_users()}
     sessions = db.list_all_sessions()
     if not sessions:
         st.info("עוד אין שיחות במערכת.")
     else:
         first_day = min(item["updated_at"][:10] for item in sessions)
         owners = sorted({item["username"] for item in sessions})
-        top = st.columns(4)
+        reps = sorted({r for item in sessions for r in item["reps"]})
+        top = st.columns(3)
         picked_owners = top[0].multiselect("משתמשים", owners, placeholder="כל המשתמשים", key="admin_f_owners")
         rep_filter = top[1].selectbox("שיחה עם נציג", REP_FILTERS, key="admin_f_rep")
-        period = top[2].date_input("טווח תאריכים (עדכון אחרון)",
-                                   value=(date.fromisoformat(first_day), datetime.now().date()), key="admin_f_dates")
-        sort_by = top[3].selectbox("מיון", list(SORTS), key="admin_f_sort")
+        picked_reps = top[2].multiselect("נציג שענה", reps, format_func=lambda r: names.get(r, r),
+                                         placeholder="כל הנציגים", key="admin_f_reps")
+        bottom = st.columns(3)
+        period = bottom[0].date_input("טווח תאריכים (עדכון אחרון)",
+                                      value=(date.fromisoformat(first_day), datetime.now().date()), key="admin_f_dates")
+        view_filter = bottom[1].selectbox("מצב צפייה", ["הכול", "טרם נצפו", "נצפו"], key="admin_f_viewed")
+        sort_by = bottom[2].selectbox("מיון", list(SORTS), key="admin_f_sort")
 
         shown = sessions
         if picked_owners:
@@ -51,34 +80,67 @@ with tab_sessions:
             shown = [x for x in shown if x["rep_total"] == 0]
         elif rep_filter == REP_FILTERS[3]:
             shown = [x for x in shown if x["rep_open"] > 0]
+        if picked_reps:
+            shown = [x for x in shown if set(picked_reps) & set(x["reps"])]
+        if view_filter == "טרם נצפו":
+            shown = [x for x in shown if unseen(x)]
+        elif view_filter == "נצפו":
+            shown = [x for x in shown if not unseen(x)]
         if isinstance(period, (tuple, list)) and len(period) == 2:
             start, end = period[0].isoformat(), period[1].isoformat()
             shown = [x for x in shown if start <= x["updated_at"][:10] <= end]
         sort_key, descending = SORTS[sort_by]
         shown = sorted(shown, key=lambda x: x[sort_key], reverse=descending)
 
-        st.caption(f"{len(shown)} שיחות מתוך {len(sessions)}")
-        if not shown:
-            st.info("אין שיחות שמתאימות לסינון.")
+        opened = st.session_state.get("admin_open")
+        by_id = {x["session_id"]: x for x in sessions}
+        if opened and opened in by_id:
+            item = by_id[opened]
+            head, close = st.columns([5, 1], vertical_alignment="center")
+            head.markdown(f"**{item['title']}** · {item['username']} · {when(item['updated_at'])}")
+            close.button("סגירת השיחה", key="admin_close_session", use_container_width=True, on_click=close_session)
+            st.caption("צפייה בלבד - אי אפשר לכתוב או לשנות שיחה של משתמש.")
+            st.markdown(user_avatar_css(item["display_name"]), unsafe_allow_html=True)    # האות של בעל השיחה
+            for message in db.load_messages(opened):
+                with st.chat_message(message["role"], avatar=avatar_for(message["role"])):
+                    st.markdown(fix_bidi(message["content"]))
+            questions = db.list_session_questions(opened)
+            if questions:
+                st.markdown("##### שאלות לנציג בשיחה")
+                for q in questions:
+                    who = names.get(q["answered_by"], q["answered_by"]) if q["answered_by"] else None
+                    answer = (f"{q['answer_value']:,.0f} ₪" if q["answer_value"] is not None else (q["answer_note"] or "-")) \
+                        if q["status"] in ("answered", "applied") else "ממתינה לתשובה"
+                    st.markdown(f"- {REP_FIELDS.get(q['missing_field'], q['missing_field'])} · {answer}"
+                                + (f" · ענה/תה: {who}" if who else ""))
         else:
-            st.dataframe([{"משתמש": x["username"], "שיחה": x["title"], "עודכנה": when(x["updated_at"]),
-                           "הודעות": x["messages"], "נציג": rep_label(x)} for x in shown],
-                         hide_index=True, use_container_width=True)
-            by_id = {x["session_id"]: x for x in shown}
-            chosen = st.selectbox("צפייה בשיחה", list(by_id), index=None, placeholder="בחרי שיחה לצפייה",
-                                  key="admin_session_pick",
-                                  format_func=lambda sid: f"{by_id[sid]['username']} · {by_id[sid]['title']} · "
-                                                          f"{when(by_id[sid]['updated_at'])}")
-            if chosen:
-                head, close = st.columns([5, 1], vertical_alignment="center")
-                head.caption("צפייה בלבד - אי אפשר לכתוב או לשנות שיחה של משתמש.")
-                # הניקוי ב-callback: אי אפשר לשנות מפתח של ווידג'ט אחרי שהוא כבר צויר בהרצה הנוכחית
-                close.button("סגירת השיחה", key="admin_close_session", use_container_width=True,
-                             on_click=lambda: st.session_state.update(admin_session_pick=None))
-                st.markdown(user_avatar_css(by_id[chosen]["display_name"]), unsafe_allow_html=True)  # האות של הבעלים
-                for message in db.load_messages(chosen):
-                    with st.chat_message(message["role"], avatar=avatar_for(message["role"])):
-                        st.markdown(fix_bidi(message["content"]))
+            st.caption(f"{len(shown)} שיחות מתוך {len(sessions)}. שורה מסומנת = טרם נצפתה או עודכנה מאז הצפייה.")
+            if not shown:
+                st.info("אין שיחות שמתאימות לסינון.")
+            else:
+                widths = [1.3, 2.2, 1.5, 0.8, 1.7, 2.2, 0.9]
+                header = st.columns(widths)
+                for column, label in zip(header, ["משתמש", "שיחה", "עודכנה", "הודעות", "נציג", "נצפתה לאחרונה", ""]):
+                    column.markdown(f"**{label}**" if label else " ")
+                for item in shown[:100]:
+                    fresh = unseen(item)
+                    with st.container(key=f"sessrow_{'new' if fresh else 'seen'}_{item['session_id']}"):
+                        row = st.columns(widths, vertical_alignment="center")
+                        row[0].write(item["username"])
+                        row[1].write(item["title"])
+                        row[2].write(when(item["updated_at"]))
+                        row[3].write(str(item["messages"]))
+                        row[4].write(rep_label(item, names))
+                        if not item["viewed_at"]:
+                            row[5].markdown("**טרם נצפתה**")
+                        else:
+                            by = names.get(item["viewed_by"], item["viewed_by"] or "")
+                            note = " · **עודכנה מאז**" if fresh else ""
+                            row[5].markdown(f"{when(item['viewed_at'])} · {by}{note}")
+                        row[6].button("צפייה", key=f"view_{item['session_id']}", use_container_width=True,
+                                      on_click=open_session, args=(item["session_id"],))
+                if len(shown) > 100:
+                    st.caption(f"מוצגות 100 הראשונות. צמצמי בעזרת הסינון כדי לראות את השאר.")
 
 with tab_users:
     notice = st.session_state.pop("admin_notice", None)
