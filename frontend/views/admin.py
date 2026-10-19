@@ -14,13 +14,15 @@ SORTS = {"עודכנו לאחרונה (מהחדש לישן)": ("updated_at", Tru
 REP_FILTERS = ["הכול", "היתה שיחה עם נציג", "לא היתה שיחה עם נציג", "ממתינה לתשובת נציג"]
 
 
-def rep_label(item: dict, names: dict) -> str:
+def rep_label(item: dict) -> str:
+    """האם היתה שיחה עם נציג (בלי שמות; השמות בעמודה נפרדת)."""
     if item["rep_open"]:
         return "ממתינה לתשובה"
-    if not item["rep_total"]:
-        return "לא היתה"
-    who = ", ".join(names.get(r, r) for r in item["reps"])
-    return f"היתה ({who})" if who else f"היתה ({item['rep_total']})"
+    return "היתה" if item["rep_total"] else "לא היתה"
+
+
+def rep_names(item: dict, names: dict) -> str:
+    return ", ".join(names.get(r, r) for r in item["reps"]) or "—"
 
 
 def when(value: str) -> str:
@@ -118,26 +120,28 @@ with tab_sessions:
             if not shown:
                 st.info("אין שיחות שמתאימות לסינון.")
             else:
-                widths = [1.5, 1.3, 1.7, 0.8, 2.2, 2.2, 0.9]
+                widths = [1.7, 1.7, 1.0, 1.1, 1.4, 0.7, 1.6, 2.2, 0.8]
                 header = st.columns(widths)
-                for column, label in zip(header, ["עודכנה", "משתמש", "נציג", "הודעות", "שיחה", "נצפתה לאחרונה", ""]):
+                for column, label in zip(header, ["תאריך", "תאריך עדכון", "משתמש", "נציג", "נציגים שענו", "הודעות", "שיחה", "נצפתה לאחרונה", ""]):
                     column.markdown(f"**{label}**" if label else " ")
                 for item in shown[:100]:
                     fresh = unseen(item)
                     with st.container(key=f"sessrow_{'new' if fresh else 'seen'}_{item['session_id']}"):
                         row = st.columns(widths, vertical_alignment="center")
-                        row[0].write(when(item["updated_at"]))
-                        row[1].write(item["username"])
-                        row[2].write(rep_label(item, names))
-                        row[3].write(str(item["messages"]))
-                        row[4].write(item["title"])
+                        row[0].write(when(item["created_at"]))
+                        row[1].write(when(item["updated_at"]))
+                        row[2].write(item["username"])
+                        row[3].write(rep_label(item))
+                        row[4].write(rep_names(item, names))
+                        row[5].write(str(item["messages"]))
+                        row[6].write(item["title"])
                         if not item["viewed_at"]:
-                            row[5].markdown("**טרם נצפתה**")
+                            row[7].markdown("**טרם נצפתה**")
                         else:
                             by = names.get(item["viewed_by"], item["viewed_by"] or "")
                             note = " · **עודכנה מאז**" if fresh else ""
-                            row[5].markdown(f"{when(item['viewed_at'])} · {by}{note}")
-                        row[6].button("צפייה", key=f"view_{item['session_id']}", use_container_width=True,
+                            row[7].markdown(f"{when(item['viewed_at'])} · {by}{note}")
+                        row[8].button("צפייה", key=f"view_{item['session_id']}", use_container_width=True,
                                       on_click=open_session, args=(item["session_id"],))
                 if len(shown) > 100:
                     st.caption(f"מוצגות 100 הראשונות. צמצמי בעזרת הסינון כדי לראות את השאר.")

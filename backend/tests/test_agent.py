@@ -436,3 +436,28 @@ def test_strip_time_claims_removes_invented_rep_handling_times():
     assert "שלחתי שאלה לנציג התחבורה" in cleaned and "האם לבדוק חלופה נוספת" in cleaned
     plain = "הנטו שלך יעלה, והשינוי בשכר קטן."
     assert strip_time_claims(plain) == plain
+
+
+def test_claim_of_contacting_rep_without_tool_is_corrected():
+    llm = ScriptedLLM([
+        "שלחתי שאלה לנציג התחבורה, והוא יחזור אליך בקרוב.",           # טענה בלי כלי
+        [("update_employee_data", {"eligibility_group": "ג"})],
+        "רשמתי את קבוצת הזכאות. מה שכר הבסיס?",
+    ])
+    result = chat(SID, "קבוצה ג", llm=llm)
+    assert "נציג" not in result["reply"]
+    assert not db.list_questions("open")
+
+
+def test_claim_of_contacting_rep_is_stripped_when_still_unbacked():
+    llm = ScriptedLLM(["שלחתי שאלה לנציג התחבורה.", "פניתי לנציג והוא יענה בהקדם. מה שכר הבסיס?"])
+    result = chat(SID, "אני לא יודע", llm=llm)
+    assert "נציג" not in result["reply"]
+    assert "מה שכר הבסיס" in result["reply"]
+
+
+def test_claim_of_contacting_rep_is_allowed_when_question_is_open():
+    db.save_state(db.load_state(SID))
+    db.create_question(SID, "new_participation", "הקשר", "סיכום")
+    llm = ScriptedLLM(["שלחתי שאלה לנציג התחבורה ואני ממתין לתשובה."])
+    assert "שלחתי שאלה לנציג" in chat(SID, "תודה", llm=llm)["reply"]

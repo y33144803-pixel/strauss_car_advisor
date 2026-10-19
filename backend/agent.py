@@ -358,6 +358,28 @@ def strip_time_claims(text: str) -> str:
     return "\n\n".join(kept).strip()
 
 
+# טענה "שלחתי / העברתי שאלה לנציג" חייבת להיות מגובה בפעולה אמיתית (הכלי request_representative_info הצליח, או שיש
+# שאלה פתוחה לנציג בשיחה). אחרת הבוט הבטיח משהו שלא קרה, ובמסך הנציג אין שום שאלה
+_REP_CLAIM_RE = re.compile(
+    r"(?:שלחתי|שלחנו|פניתי|פנינו|העברתי|הפניתי|נשלחה|הועברה|הופנתה|פתחתי)[^.!?\n]*נציג|"
+    r"נציג[^.!?\n]*(?:קיבל|יקבל|קיבלו|יענה|ישיב|יחזור)")
+
+
+def claims_rep_contact(text: str) -> bool:
+    return bool(_REP_CLAIM_RE.search(text))
+
+
+def strip_rep_claims(text: str) -> str:
+    parts = [part for part in re.split(r"(?<=[.!?])[ \t]+|\n", text) if part.strip()]
+    return "\n\n".join(part for part in parts if not _REP_CLAIM_RE.search(part)).strip()
+
+
+def rep_contact_is_backed(session_id: str, tool_log: list) -> bool:
+    if any(t["tool"] == "request_representative_info" and (t["output"] or {}).get("ok") for t in tool_log):
+        return True
+    return db.has_open_questions(session_id)
+
+
 def chat(session_id: str, user_text: str | None = None, llm=None, on_step=None, on_status=None) -> dict:
     """תור אחד בשיחה: הודעת העובד -> (קריאות כלים) -> תשובת הבוט.
     בלי user_text: ממשיכים הודעה שכבר נשמרה ולא נענתה (ניסיון חוזר, בלי לשלוח אותה פעמיים).
@@ -405,17 +427,27 @@ def chat(session_id: str, user_text: str | None = None, llm=None, on_step=None, 
             candidate = re.sub(r"\s*\[[a-z_]{4,}\]", "", response.message.content or "")   # שם כלי שדלף לטקסט
             candidate = strip_time_claims(candidate)
             invented = unsupported_amounts(candidate, _evidence(session_id, messages, tool_log))
-            if not invented:
+            rep_claim = claims_rep_contact(candidate) and not rep_contact_is_backed(session_id, tool_log)
+            if not invented and not rep_claim:
                 reply = candidate
                 break
             if corrections_left > 0:
                 corrections_left -= 1
                 history.append(response.message)
-                history.append(ChatMessage(role=MessageRole.USER, content=(
-                    f"[הודעת מערכת] התשובה כללה מספרים שלא הגיעו מהעובד או מכלי: {', '.join(invented)}. "
-                    "אסור להמציא מספרים. הפעל את הכלי המתאים (למשל calculate_net_salary), "
-                    "או נסח מחדש בלי המספרים האלה.")))
+                problems = []
+                if invented:
+                    problems.append(f"התשובה כללה מספרים שלא הגיעו מהעובד או מכלי: {', '.join(invented)}. "
+                                    "אסור להמציא מספרים. הפעל את הכלי המתאים (למשל calculate_net_salary), "
+                                    "או נסח מחדש בלי המספרים האלה.")
+                if rep_claim:
+                    problems.append("כתבת שפנית או שלחת שאלה לנציג התחבורה, אבל לא הפעלת את request_representative_info "
+                                    "והצלחת, ואין שאלה פתוחה. אם העובד אמר שהוא לא יודע את הנתון - הפעל את הכלי עכשיו. "
+                                    "אחרת נסח מחדש בלי לטעון שפנית לנציג.")
+                history.append(ChatMessage(role=MessageRole.USER, content="[הודעת מערכת] " + " ".join(problems)))
                 continue
+            if rep_claim and not invented:
+                reply = strip_rep_claims(candidate) or SAFE_REPLY      # לא מבטיחים פנייה שלא קרתה
+                break
             reply = SAFE_REPLY
             break
         history.append(response.message)
