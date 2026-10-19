@@ -425,3 +425,14 @@ def test_api_key_count_reads_all_configured_keys(monkeypatch):
     assert agent.api_key_count() == 2
     monkeypatch.setenv("GOOGLE_API_KEY_2", "")
     assert agent.api_key_count() == 1
+
+
+def test_strip_time_claims_removes_invented_rep_handling_times():
+    from agent import strip_time_claims
+    text = ("שלחתי שאלה לנציג התחבורה.\nזמן הטיפול של נציגי התחבורה הוא בדרך כלל בין יום לשלושה ימי עסקים.\n\n"
+            "ברגע שתתקבל תשובה אעדכן. האם לבדוק חלופה נוספת?")
+    cleaned = strip_time_claims(text)
+    assert "ימי עסקים" not in cleaned and "זמן הטיפול" not in cleaned
+    assert "שלחתי שאלה לנציג התחבורה" in cleaned and "האם לבדוק חלופה נוספת" in cleaned
+    plain = "הנטו שלך יעלה, והשינוי בשכר קטן."
+    assert strip_time_claims(plain) == plain

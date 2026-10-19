@@ -342,6 +342,22 @@ def pending_user_message(session_id: str) -> str | None:
     return messages[-1]["content"] if messages and messages[-1]["role"] == "user" else None
 
 
+# הבוט לא יודע כמה זמן לוקח לנציג לענות (אין לו מידע כזה), ולכן משפטים שמעריכים זמן טיפול נמחקים מהתשובה
+_TIME_CLAIM_RE = re.compile(
+    r"ימי עסקים|ימי עבודה|שעות עבודה|זמן (?:ה)?(?:טיפול|המתנה|תגובה)|"
+    r"(?:בדרך כלל|לרוב|בממוצע)[^.!?\n]*(?:יום|ימים|שעות|שעה|דקות)|"
+    r"(?:תוך|בתוך|עד) (?:\S+ )?(?:יום|יומיים|ימים|שעות|שעה|דקות)\b")
+
+
+def strip_time_claims(text: str) -> str:
+    """מוחק משפטים שמבטיחים או מעריכים זמן תשובה של הנציג - מידע שאין לבוט ולכן מומצא."""
+    parts = [part for part in re.split(r"(?<=[.!?])[ \t]+|\n", text) if part.strip()]
+    kept = [part for part in parts if not _TIME_CLAIM_RE.search(part)]
+    if len(kept) == len(parts):
+        return text                                   # לא נמצא דבר: הטקסט המקורי נשאר בדיוק כמות שהוא
+    return "\n\n".join(kept).strip()
+
+
 def chat(session_id: str, user_text: str | None = None, llm=None, on_step=None, on_status=None) -> dict:
     """תור אחד בשיחה: הודעת העובד -> (קריאות כלים) -> תשובת הבוט.
     בלי user_text: ממשיכים הודעה שכבר נשמרה ולא נענתה (ניסיון חוזר, בלי לשלוח אותה פעמיים).
@@ -387,6 +403,7 @@ def chat(session_id: str, user_text: str | None = None, llm=None, on_step=None, 
         tool_calls = llm.get_tool_calls_from_response(response, error_on_no_tool_call=False)
         if not tool_calls:
             candidate = re.sub(r"\s*\[[a-z_]{4,}\]", "", response.message.content or "")   # שם כלי שדלף לטקסט
+            candidate = strip_time_claims(candidate)
             invented = unsupported_amounts(candidate, _evidence(session_id, messages, tool_log))
             if not invented:
                 reply = candidate
