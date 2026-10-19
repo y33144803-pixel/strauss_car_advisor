@@ -141,7 +141,9 @@ def update_employee_data(session_id: str,
     else:
         emp.group_conflict = None
     if children_ages is not None:
-        if all(0 <= age <= 120 for age in children_ages):
+        if len(children_ages) > 20:
+            errors.append("מספר הילדים גדול מדי (עד 20)")
+        elif all(0 <= age <= 120 for age in children_ages):
             max_age = rules["familyTrack"]["childMaxAge"]
             apply(emp, "children_ages", [int(a) for a in children_ages], "גילאי הילדים")
             # הספירה נעשית בקוד, לא במודל: רק ילדים עד הגיל המרבי נספרים למסלול
@@ -638,12 +640,25 @@ def calculate_net_salary(session_id: str) -> dict:
 
 # ---------------------------------------------------------------- 6. פנייה לנציג
 
+_UNKNOWN_RE = re.compile(
+    r"לא יודע|לא יודעת|אינני יודע|אינני יודעת|אין לי מושג|לא ידוע|לא זוכר|לא זוכרת|לא בטוח|לא בטוחה|"
+    r"אין לי מידע|אין לי את הנתון|לא מכיר|נציג|תשאל|תשאלי|תברר|תבררי|תבדוק|תבדקי|תפנה|תפני|"
+    r"^\s*(?:לא|אין|לא ממש|אין לי)[\s.!?]*$")
+
+
+def _employee_said_unknown(session_id: str, last: int = 3) -> bool:
+    """האם באחת מ-3 הודעות העובד האחרונות הוא אמר שאינו יודע את הנתון (או ביקש לברר מול הנציג)."""
+    user_messages = [m["content"] for m in db.load_messages(session_id) if m["role"] == "user"][-last:]
+    return any(_UNKNOWN_RE.search(text) for text in user_messages)
+
+
 def request_representative_info(session_id: str, missing_field: str, context_message: str,
                                 employee_confirmed_unknown: bool = False) -> dict:
     """פתיחת שאלה לנציג התחבורה על נתון שהעובד לא יודע. לעולם לא מנחשים."""
     if missing_field not in REP_FIELDS:
         return _result(False, error=f"missing_field חייב להיות אחד מ: {', '.join(REP_FIELDS)}")
-    if missing_field in ASK_EMPLOYEE_FIRST and not employee_confirmed_unknown:
+    if missing_field in ASK_EMPLOYEE_FIRST and not (employee_confirmed_unknown and _employee_said_unknown(session_id)):
+        # הדגל שהמודל מעביר לא מספיק: נבדק בקוד שבהודעות האחרונות של העובד הוא באמת אמר שאינו יודע / ביקש לפנות לנציג
         return _result(False, error="אי אפשר לפנות לנציג לפני שהעובד אמר במפורש שהוא לא יודע את הנתון",
                        next_step=f"שאל את העובד: {REP_FIELDS[missing_field]}? רק אם ענה שאינו יודע - הפעל שוב את הכלי "
                                  "עם employee_confirmed_unknown=true")

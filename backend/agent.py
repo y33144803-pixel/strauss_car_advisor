@@ -295,9 +295,7 @@ def check_representative_updates(session_id: str) -> str | None:
     else:
         lines.append(_continuation_line(session_id))
     message = "\n".join(lines)
-    messages = db.load_messages(session_id)
-    messages.append({"role": "assistant", "content": message, "source": "representative"})
-    db.save_messages(session_id, messages)
+    db.append_messages(session_id, [{"role": "assistant", "content": message, "source": "representative"}])
     return message
 
 
@@ -398,7 +396,7 @@ def chat(session_id: str, user_text: str | None = None, llm=None, on_step=None, 
             raise ValueError("אין הודעת עובד שממתינה לתשובה")
     else:
         messages.append({"role": "user", "content": user_text})
-        db.save_messages(session_id, messages)
+        db.append_messages(session_id, [{"role": "user", "content": user_text}])
 
     history = _history_messages(messages)
     note = picker_context_note(messages)
@@ -475,5 +473,5 @@ def chat(session_id: str, user_text: str | None = None, llm=None, on_step=None, 
 
     messages.append({"role": "assistant", "content": reply,
                      "tools": [t["tool"] for t in tool_log]})
-    db.save_messages(session_id, messages)
+    db.append_messages(session_id, [messages[-1]])         # הוספה (ולא דריסה): הודעות שנוספו במקביל נשמרות
     return {"reply": reply, "tool_calls": tool_log}

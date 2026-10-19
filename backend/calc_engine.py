@@ -10,13 +10,14 @@ from pydantic import BaseModel, Field
 from data_store import get_rules
 
 MAX_CREDIT_POINTS = 100      # תקרת נקודות זיכוי שמתקבלת (0 הוא המינימום החוקי)
+MAX_MONTHLY_AMOUNT = 1_000_000   # תקרת היגיון לסכום חודשי (שכר, עמלות, בונוס): מעבר לה - כנראה טעות הקלדה
 
 
 class SalaryInput(BaseModel):
     """נתוני השכר של העובד. אחוזים מוזנים כמספר (6 = 6%)."""
-    base_salary: float = Field(gt=0, description="שכר בסיס חודשי")
-    commissions: float = Field(default=0, ge=0, description="עמלות")
-    bonus: float = Field(default=0, ge=0, description="בונוס")
+    base_salary: float = Field(gt=0, le=MAX_MONTHLY_AMOUNT, description="שכר בסיס חודשי")
+    commissions: float = Field(default=0, ge=0, le=MAX_MONTHLY_AMOUNT, description="עמלות")
+    bonus: float = Field(default=0, ge=0, le=MAX_MONTHLY_AMOUNT, description="בונוס")
     pension_rate: float = Field(ge=0, le=100, description="אחוז הפרשת עובד לפנסיה")
     study_fund_rate: float = Field(default=0, ge=0, le=100, description="אחוז הפרשת עובד לקרן השתלמות")
     credit_points: float = Field(ge=0, le=MAX_CREDIT_POINTS, description="נקודות זיכוי")

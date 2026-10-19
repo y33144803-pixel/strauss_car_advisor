@@ -225,3 +225,15 @@ def test_minimum_password_length_is_eight():
     with pytest.raises(auth.LoginError):
         auth.create_user("frank", "short12", "employee", "פרנק")      # 7 תווים
     auth.create_user("frank", "longer-12", "employee", "פרנק")
+
+
+def test_append_messages_keeps_concurrent_messages_and_summary_columns():
+    db.claim_session("race", "dana")
+    db.save_messages("race", [{"role": "assistant", "content": "שלום"}])
+    db.append_messages("race", [{"role": "user", "content": "שאלה ראשונה"}])
+    db.append_messages("race", [{"role": "assistant", "content": "תשובת נציג", "source": "representative"}])   # "במקביל"
+    db.append_messages("race", [{"role": "assistant", "content": "תשובת הבוט"}])
+    contents = [m["content"] for m in db.load_messages("race")]
+    assert contents == ["שלום", "שאלה ראשונה", "תשובת נציג", "תשובת הבוט"]
+    row = db.list_user_sessions("dana")[0]
+    assert row["preview"] == "שאלה ראשונה" and row["messages"] == 1

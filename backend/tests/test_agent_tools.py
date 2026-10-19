@@ -581,3 +581,21 @@ def test_waiting_without_any_question_at_the_representative_is_cleared():
     apply_representative_answers(SID)
     state = db.load_state(SID)
     assert state.pending_questions == {} and state.waiting_for_representative is False
+
+
+@pytest.fixture(autouse=True)
+def employee_said_unknown(temp_db):
+    """רוב הבדיקות מדמות עובד שאמר שאינו יודע (הכלי בודק זאת בהודעות העובד); ראו test_representative_*."""
+    db.save_messages(SID, [{"role": "assistant", "content": "מה ההשתתפות שלך?"},
+                           {"role": "user", "content": "אני לא יודע"}])
+
+
+def test_representative_flag_alone_is_not_enough_without_employee_saying_unknown():
+    fill_script_employee()
+    set_corolla_cross_today()
+    verify_budget_and_eligibility(SID, "CAR-10")
+    db.save_messages(SID, [{"role": "user", "content": "תחשב לי את הנטו"}])          # העובד לא אמר שאינו יודע
+    r = request_representative_info(SID, "new_participation", "x", employee_confirmed_unknown=True)
+    assert r["ok"] is False and db.list_questions("open") == []
+    db.append_messages(SID, [{"role": "user", "content": "אני לא יודע כמה אשתתף, תשאל את הנציג"}])
+    assert request_representative_info(SID, "new_participation", "x", employee_confirmed_unknown=True)["ok"]

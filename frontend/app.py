@@ -59,7 +59,8 @@ def warm_up() -> bool:
 
 
 warm_up()
-ui.reload_changed_modules()      # שינוי בקוד ה-backend בזמן שהשרת רץ נטען מחדש בלי להפעיל את השרת
+if os.environ.get("DEV_RELOAD", "1") != "0" and not os.environ.get("RENDER"):
+    ui.reload_changed_modules()  # רק בפיתוח (בענן הקוד לא משתנה בזמן ריצה). שינוי בקוד ה-backend בזמן שהשרת רץ נטען מחדש בלי להפעיל את השרת
 load_users()
 user = ui.current_user()
 if user is None:                 # לא מחוברים: רק מסך כניסה

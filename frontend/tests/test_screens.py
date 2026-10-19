@@ -24,6 +24,13 @@ def signed_in(at: AppTest, role: str = "both", name: str = "נועה לוי") ->
     return at
 
 
+def ask_rep(context: str):
+    """פנייה לנציג כפי שקורה בשיחה אמיתית: העובד אמר קודם שהוא לא יודע (הכלי בודק זאת בהודעות העובד)."""
+    import db
+    db.append_messages(SID, [{"role": "user", "content": "אני לא יודע כמה אשתתף"}])
+    return request_representative_info(SID, "new_participation", context, True)
+
+
 def employee_app(show_comparison: bool = False, show_data: bool = False) -> AppTest:
     at = signed_in(AppTest.from_file(os.path.join(VIEWS, "employee.py"), default_timeout=30))
     at.query_params["sid"] = SID
@@ -80,7 +87,7 @@ def test_provisional_comparison_is_labeled_and_sidebar_options_exist():
     find_current_car(SID, "corolla cross", 2025)
     set_current_situation(SID, "car", candidate_number=1, participation=300)
     verify_budget_and_eligibility(SID, "CAR-10")
-    request_representative_info(SID, "new_participation", "בדיקה", True)
+    ask_rep("בדיקה")
     at = employee_app(show_comparison=True)
     assert any("השוואת ביניים" in w.value for w in at.warning)
     assert any("ממתין לתשובה" in i.value or "ממתין" in i.value for i in at.info)
@@ -117,7 +124,7 @@ def test_progress_total_never_changes_during_the_conversation():
 def test_representative_answer_flows_back_to_employee_screen():
     fill_to_comparison()
     verify_budget_and_eligibility(SID, "CAR-11")                 # חלופה חדשה בלי השתתפות
-    request_representative_info(SID, "new_participation", "EV3 בקבוצה ג", True)
+    ask_rep("EV3 בקבוצה ג")
 
     rep = signed_in(AppTest.from_file(os.path.join(VIEWS, "representative.py"), default_timeout=30)).run()
     assert not rep.exception
@@ -136,7 +143,7 @@ def test_representative_answer_flows_back_to_employee_screen():
 def test_representative_cannot_submit_empty_amount():
     fill_to_comparison()
     verify_budget_and_eligibility(SID, "CAR-11")
-    request_representative_info(SID, "new_participation", "EV3 בקבוצה ג", True)
+    ask_rep("EV3 בקבוצה ג")
 
     rep = signed_in(AppTest.from_file(os.path.join(VIEWS, "representative.py"), default_timeout=30)).run()
     rep.button[0].click().run()                                  # שליחה בלי סכום

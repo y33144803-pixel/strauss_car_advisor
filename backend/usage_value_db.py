@@ -49,9 +49,15 @@ def make_key(tax_year, registration_year, car_type_code, make_code, model_code) 
     )
 
 
+_KEY_COLUMNS = ["tax_year", "registration_year", "car_type_code", "make_code", "model_code"]
+_TEXT_COLUMNS = ["tax_year", "registration_year", "car_type_code", "make_code", "make_name", "model_code",
+                 "model_description", "commercial_name", "drive_code"]
+
+
 @lru_cache(maxsize=1)
 def load_db(csv_path: str = CSV_PATH) -> pd.DataFrame:
-    """טוען את המאגר כמחרוזות (כדי לשמור אפסים מובילים) ומנקה רווחים."""
+    """טוען את המאגר כמחרוזות (כדי לשמור אפסים מובילים) ומנקה רווחים.
+    עמודות הטקסט החוזרות נשמרות כ-category: כך המאגר (כ-78 אלף שורות) תופס הרבה פחות זיכרון בשרת קטן."""
     df = pd.read_csv(csv_path, encoding="cp1255", dtype=str)
     df.columns = [c.strip() for c in df.columns]
     df = df[list(COLUMNS)].rename(columns=COLUMNS)
@@ -59,27 +65,32 @@ def load_db(csv_path: str = CSV_PATH) -> pd.DataFrame:
         df[col] = df[col].str.strip()
     df["usage_value"] = pd.to_numeric(df["usage_value"], errors="coerce")
     df["list_price"] = pd.to_numeric(df["list_price"], errors="coerce")
-    df["key"] = list(zip(df.tax_year, df.registration_year, df.car_type_code, df.make_code, df.model_code))
+    for col in _TEXT_COLUMNS:
+        if col in df.columns:
+            df[col] = df[col].astype("category")
     return df
 
 
 @lru_cache(maxsize=1)
 def _index(csv_path: str = CSV_PATH) -> dict:
-    """אינדקס מילוני לשליפה מיידית לפי המפתח הרשמי."""
-    return {record["key"]: record for record in load_db(csv_path).to_dict("records")}
+    """אינדקס לשליפה מיידית: המפתח הרשמי -> מספר שורה במאגר (לא עותק של כל השורות, כדי לחסוך זיכרון)."""
+    df = load_db(csv_path)
+    keys = zip(*(df[col].astype(object) for col in _KEY_COLUMNS))
+    return {key: position for position, key in enumerate(keys)}
 
 
 def get_usage_value(tax_year, registration_year, car_type_code, make_code, model_code) -> dict:
     """שליפה לפי המפתח הרשמי. מחזיר {'found': True, ...פרטי הרכב} או {'found': False, 'error': ...}."""
     key = make_key(tax_year, registration_year, car_type_code, make_code, model_code)
-    record = _index().get(key)
+    position = _index().get(key)
+    record = load_db().iloc[position].to_dict() if position is not None else None
     if record is None:
         return {
             "found": False,
             "error": "לא נמצאה רשומה במאגר רשות המסים למפתח: "
                      f"שנת מס {key[0]}, שנת רישום {key[1]}, סוג רכב {key[2]}, תוצר {key[3]}, דגם {key[4]}",
         }
-    result = {k: v for k, v in record.items() if k != "key"}
+    result = dict(record)
     result["found"] = True
     return result
 
@@ -101,9 +112,14 @@ def search_by_name(commercial_name: str, registration_year=None, *, tax_year, li
     if registration_year is not None:
         mask &= df["registration_year"] == str(registration_year)
     names = df.loc[mask, ["make_name", "commercial_name"]].drop_duplicates()     # התאמת טקסט רק לשמות ייחודיים
-    matching = names[[name_matches(commercial_name, make, name)
-                      for make, name in zip(names["make_name"], names["commercial_name"])]]
-    mask &= df["make_name"].isin(matching["make_name"]) & df["commercial_name"].isin(matching["commercial_name"])
+    hits = [name_matches(commercial_name, make, name) for make, name in zip(names["make_name"], names["commercial_name"])]
+    matching = names.loc[hits]          # (names[[...]] עם רשימה ריקה היה בוחר עמודות ולא שורות)
+    # התאמה לפי הזוג (יצרן, שם מסחרי) ולא לפי כל אחד לחוד - אחרת נקבל גם שילובים שלא תאמו יחד לטקסט
+    pairs = set(zip(matching["make_name"], matching["commercial_name"]))
+    candidates = df.loc[mask & df["make_name"].isin(matching["make_name"])
+                        & df["commercial_name"].isin(matching["commercial_name"])]
+    keep = [(make, name) in pairs for make, name in zip(candidates["make_name"], candidates["commercial_name"])]
     cols = ["tax_year", "registration_year", "car_type_code", "make_code", "make_name",
             "model_code", "model_description", "commercial_name", "drive_code", "list_price", "usage_value"]
-    return df.loc[mask, cols].head(limit).to_dict("records")
+    found = candidates.loc[keep, cols]
+    return found.head(limit).to_dict("records")

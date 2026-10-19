@@ -104,7 +104,7 @@ def test_representative_answer_resumes_conversation():
                                           "employee_confirmed_unknown": True})],
         "חסר לי סכום ההשתתפות שלך ברכב החדש - שלחתי שאלה לנציג התחבורה.",
     ])
-    chat(SID, "כל הנתונים...", llm=llm)
+    chat(SID, "כל הנתונים... ואני לא יודע כמה אשתתף ברכב החדש", llm=llm)
     state = db.load_state(SID)
     assert state.waiting_for_representative and state.last_result["status"] == "provisional"
 
@@ -385,6 +385,7 @@ def test_representative_answer_without_full_data_says_what_is_missing():
     find_current_car(SID, "corolla cross", 2025)
     set_current_situation(SID, "car", candidate_number=1, participation=300)
     verify_budget_and_eligibility(SID, "CAR-10")
+    db.append_messages(SID, [{"role": "user", "content": "אני לא יודע כמה אשתתף"}])
     request_representative_info(SID, "new_participation", "בדיקה", True)
     q = db.list_questions("open")[-1]
     db.answer_question(q["id"], 50.0, None, None)

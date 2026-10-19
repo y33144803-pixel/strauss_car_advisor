@@ -74,6 +74,13 @@ def _init_schema() -> None:
         columns = [row[1] for row in conn.execute("PRAGMA table_info(sessions)")]
         if "username" not in columns:                  # שיחות ישנות (לפני ההתחברות) נשארות בלי בעלים
             conn.execute("ALTER TABLE sessions ADD COLUMN username TEXT")
+        if "first_user" not in columns:                # תקציר לרשימות: ההודעה הראשונה של העובד ומספר הודעותיו
+            conn.execute("ALTER TABLE sessions ADD COLUMN first_user TEXT")
+            conn.execute("ALTER TABLE sessions ADD COLUMN user_messages INTEGER")
+            for row in conn.execute("SELECT session_id, messages_json FROM sessions").fetchall():
+                first_user, count = _summary(json.loads(row["messages_json"]))
+                conn.execute("UPDATE sessions SET first_user = ?, user_messages = ? WHERE session_id = ?",
+                             (first_user, count, row["session_id"]))
         if "admin_viewed_at" not in columns:           # מתי מנהל צפה בשיחה לאחרונה, ומי
             conn.execute("ALTER TABLE sessions ADD COLUMN admin_viewed_at TEXT")
             conn.execute("ALTER TABLE sessions ADD COLUMN admin_viewed_by TEXT")
@@ -126,13 +133,39 @@ def load_messages(session_id: str) -> list[dict]:
     return json.loads(row["messages_json"]) if row else []
 
 
+def _summary(messages: list[dict]) -> tuple[str | None, int]:
+    """(ההודעה הראשונה של העובד, כמה הודעות כתב) - נשמרים בעמודות כדי שרשימות השיחות לא יפענחו את כל ה-JSON."""
+    users = [m["content"] for m in messages if m["role"] == "user"]
+    return (users[0] if users else None), len(users)
+
+
 def save_messages(session_id: str, messages: list[dict]) -> None:
     init_db()
     if not session_exists(session_id):
         save_state(ConversationState(session_id=session_id))
+    first_user, count = _summary(messages)
     with closing(_connect()) as conn, conn:
-        conn.execute("UPDATE sessions SET messages_json = ?, updated_at = ? WHERE session_id = ?",
-                     (json.dumps(messages, ensure_ascii=False), _now(), session_id))
+        conn.execute("""UPDATE sessions SET messages_json = ?, updated_at = ?, first_user = ?, user_messages = ?
+                        WHERE session_id = ?""",
+                     (json.dumps(messages, ensure_ascii=False), _now(), first_user, count, session_id))
+
+
+def append_messages(session_id: str, new_messages: list[dict]) -> list[dict]:
+    """מוסיף הודעות לסוף השיחה בתוך עסקה אחת (קריאה וכתיבה יחד). כך הודעה שנוספה במקביל - למשל תשובת נציג
+    שנקלטה באמצע תור ארוך - לא נדרסת. מחזיר את רשימת ההודעות המלאה."""
+    init_db()
+    if not session_exists(session_id):
+        save_state(ConversationState(session_id=session_id))
+    with closing(_connect()) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        with conn:
+            row = conn.execute("SELECT messages_json FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
+            messages = (json.loads(row["messages_json"]) if row else []) + list(new_messages)
+            first_user, count = _summary(messages)
+            conn.execute("""UPDATE sessions SET messages_json = ?, updated_at = ?, first_user = ?, user_messages = ?
+                            WHERE session_id = ?""",
+                         (json.dumps(messages, ensure_ascii=False), _now(), first_user, count, session_id))
+    return messages
 
 
 def session_exists(session_id: str) -> bool:
@@ -318,19 +351,12 @@ def list_user_sessions(username: str) -> list[dict]:
     """היסטוריית השיחות של משתמש, מהאחרונה לראשונה. שיחה בלי הודעות של העובד (רק פתיחה) לא נכללת."""
     init_db()
     with closing(_connect()) as conn:
-        rows = conn.execute("""SELECT session_id, messages_json, created_at, updated_at, title FROM sessions
-                               WHERE username = ? ORDER BY updated_at DESC""", (username,)).fetchall()
-    sessions = []
-    for row in rows:
-        messages = json.loads(row["messages_json"])
-        first_user = next((m["content"] for m in messages if m["role"] == "user"), None)
-        if first_user is None:
-            continue
-        sessions.append({"session_id": row["session_id"], "created_at": row["created_at"],
-                         "updated_at": row["updated_at"], "preview": first_user[:80],
-                         "title": (row["title"] or "").strip() or first_user[:40],
-                         "messages": sum(1 for m in messages if m["role"] == "user")})
-    return sessions
+        rows = conn.execute("""SELECT session_id, created_at, updated_at, title, first_user, user_messages
+                               FROM sessions WHERE username = ? AND first_user IS NOT NULL
+                               ORDER BY updated_at DESC""", (username,)).fetchall()
+    return [{"session_id": row["session_id"], "created_at": row["created_at"], "updated_at": row["updated_at"],
+             "preview": row["first_user"][:80], "title": (row["title"] or "").strip() or row["first_user"][:40],
+             "messages": row["user_messages"] or 0} for row in rows]
 
 
 def mark_session_viewed(session_id: str, admin_username: str) -> None:
@@ -347,7 +373,7 @@ def list_all_sessions() -> list[dict]:
     אילו נציגים ענו (reps - שמות משתמש); ומתי ועל ידי מי נצפתה לאחרונה (viewed_at / viewed_by)."""
     init_db()
     with closing(_connect()) as conn:
-        rows = conn.execute("""SELECT s.session_id, s.username, s.messages_json, s.created_at, s.updated_at, s.title,
+        rows = conn.execute("""SELECT s.session_id, s.username, s.first_user, s.user_messages, s.created_at, s.updated_at, s.title,
                                       s.admin_viewed_at, s.admin_viewed_by, u.display_name,
                                       (SELECT COUNT(*) FROM rep_questions q WHERE q.session_id = s.session_id
                                          AND q.status != 'cancelled') AS rep_total,
@@ -359,15 +385,14 @@ def list_all_sessions() -> list[dict]:
                                ORDER BY s.updated_at DESC""").fetchall()
     sessions = []
     for row in rows:
-        messages = json.loads(row["messages_json"])
-        first_user = next((m["content"] for m in messages if m["role"] == "user"), None)
+        first_user = row["first_user"]
         if first_user is None:
             continue
         sessions.append({"session_id": row["session_id"], "username": row["username"] or "(ללא משתמש)",
                          "display_name": row["display_name"] or row["username"] or "?",
                          "created_at": row["created_at"], "updated_at": row["updated_at"],
                          "title": (row["title"] or "").strip() or first_user[:40],
-                         "messages": sum(1 for m in messages if m["role"] == "user"),
+                         "messages": row["user_messages"] or 0,
                          "rep_total": row["rep_total"], "rep_open": row["rep_open"],
                          "reps": [r for r in (row["reps"] or "").split(",") if r],
                          "viewed_at": row["admin_viewed_at"], "viewed_by": row["admin_viewed_by"]})

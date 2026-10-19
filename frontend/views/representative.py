@@ -27,7 +27,7 @@ def open_questions() -> None:
             free_text = q["missing_field"] == "other"      # תשובה חופשית - אין סכום חובה
             with st.form(f"answer_{q['id']}"):
                 # value=None: שדה ריק. בלי זה ברירת המחדל 0 הייתה נשמרת בטעות כהשתתפות של 0 ₪
-                value = st.number_input("הסכום (₪)" + ("" if free_text else " - חובה"), min_value=0.0, step=50.0,
+                value = st.number_input("הסכום (₪)" + ("" if free_text else " - חובה"), min_value=0.0, max_value=50000.0, step=50.0,
                                         value=None, placeholder="הקלד/י סכום", key=f"val_{q['id']}")
                 # תאריך אופציונלי: שדה ריק = ללא תאריך. (תיבת סימון בתוך טופס לא מעדכנת את השדה בזמן אמת, ולכן הוסרה)
                 effective = st.date_input("בתוקף מתאריך (אופציונלי)", value=None, key=f"date_{q['id']}",
