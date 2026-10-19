@@ -482,7 +482,7 @@ def test_username_change_through_the_account_screen(account_users):
     at.text_input[0].set_value("dana.cohen")
     at.text_input[1].set_value("wrong")
     next(b for b in at.button if b.label == "עדכון שם משתמש").click().run()
-    assert any("הסיסמה שגויה" in e.value for e in at.error) and db.get_user("dana")   # סיסמה שגויה - לא משתנה
+    assert any("שגויה" in e.value for e in at.error) and db.get_user("dana")   # סיסמה שגויה - לא משתנה
     at.text_input[1].set_value("secret-1")
     next(b for b in at.button if b.label == "עדכון שם משתמש").click().run()
     assert db.get_user("dana.cohen") and db.get_user("dana") is None
@@ -691,3 +691,25 @@ def test_admin_filters_by_rep_who_answered_and_shows_their_name():
     at.multiselect(key="admin_f_reps").select("repone").run()
     keys = {b.key for b in at.button}
     assert "view_s-a" in keys and "view_s-b" not in keys and "view_s-c" not in keys
+
+
+def test_signed_in_user_is_logged_out_when_their_tokens_are_deleted(auth_on):
+    import db
+    at = logged_in_dana(extra_sessions=False)
+    assert at.chat_input                                              # מחוברת
+    db.clear_tokens("dana")                                           # למשל איפוס סיסמה על ידי מנהל
+    at.run()
+    assert any("כניסה למערכת" in m.value for m in at.markdown) and not at.chat_input
+
+
+def test_password_change_signs_out_other_devices_but_keeps_this_one(account_users):
+    import db
+    other_device = db.create_token("dana")
+    at = account_app()
+    next(b for b in at.button if b.label == "החלפת סיסמה").click().run()
+    at.text_input[0].set_value("secret-1")
+    at.text_input[1].set_value("brand-new-1")
+    at.text_input[2].set_value("brand-new-1")
+    next(b for b in at.button if b.label == "עדכון סיסמה").click().run()
+    assert db.user_for_token(other_device) is None                    # מכשיר אחר נותק
+    assert db.user_for_token(at.session_state["auth_token"])["username"] == "dana"      # וזה נשאר מחובר

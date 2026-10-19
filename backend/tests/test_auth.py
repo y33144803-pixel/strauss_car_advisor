@@ -208,3 +208,20 @@ def test_bad_backup_is_rejected_and_startup_loads_file(tmp_path, monkeypatch):
     monkeypatch.setenv("AUTH_USERS", "")
     auth.seed_users()
     assert auth.authenticate("dave", "secret-1")
+
+
+def test_account_forms_share_the_login_throttle():
+    auth.create_user("erin", "secret-12", "employee", "ארין")
+    for _ in range(auth.MAX_FAILED_ATTEMPTS):
+        with pytest.raises(auth.LoginError):
+            auth.change_password("erin", "wrong-pass", "another-pass-1")
+    with pytest.raises(auth.LoginError, match="יותר מדי"):
+        auth.change_password("erin", "secret-12", "another-pass-1")     # גם סיסמה נכונה נחסמת בזמן הנעילה
+    with pytest.raises(auth.LoginError, match="יותר מדי"):
+        auth.change_username("erin", "secret-12", "erin.new")
+
+
+def test_minimum_password_length_is_eight():
+    with pytest.raises(auth.LoginError):
+        auth.create_user("frank", "short12", "employee", "פרנק")      # 7 תווים
+    auth.create_user("frank", "longer-12", "employee", "פרנק")

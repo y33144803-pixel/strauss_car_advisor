@@ -29,7 +29,18 @@ def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+_READY: set[str] = set()                           # מסדים שכבר אותחלו בתהליך הזה (init_db רץ פעם אחת לכל מסד)
+
+
 def init_db() -> None:
+    path = db_path()
+    if path in _READY and os.path.exists(path):
+        return
+    _init_schema()
+    _READY.add(path)
+
+
+def _init_schema() -> None:
     with closing(_connect()) as conn, conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
@@ -158,7 +169,8 @@ def rename_user(old: str, new: str) -> bool:
     """מחליף שם משתמש ומעביר איתו את השיחות והאסימונים. False אם השם החדש כבר תפוס."""
     init_db()
     with closing(_connect()) as conn, conn:
-        if conn.execute("SELECT 1 FROM users WHERE username = ? COLLATE NOCASE", (new,)).fetchone()                 and old.casefold() != new.casefold():
+        taken = conn.execute("SELECT 1 FROM users WHERE username = ? COLLATE NOCASE", (new,)).fetchone()
+        if taken and old.casefold() != new.casefold():
             return False
         conn.execute("UPDATE users SET username = ? WHERE username = ?", (new, old))
         conn.execute("UPDATE auth_tokens SET username = ? WHERE username = ?", (new, old))
@@ -442,6 +454,7 @@ def answered_unapplied(session_id: str) -> list[dict]:
 
 
 def mark_applied(question_id: int) -> None:
+    init_db()
     with closing(_connect()) as conn, conn:
         conn.execute("UPDATE rep_questions SET status = 'applied' WHERE id = ?", (question_id,))
 

@@ -144,7 +144,7 @@ with tab_sessions:
                         row[8].button("צפייה", key=f"view_{item['session_id']}", use_container_width=True,
                                       on_click=open_session, args=(item["session_id"],))
                 if len(shown) > 100:
-                    st.caption(f"מוצגות 100 הראשונות. צמצמי בעזרת הסינון כדי לראות את השאר.")
+                    st.caption("מוצגות 100 הראשונות. צמצמי בעזרת הסינון כדי לראות את השאר.")
 
 with tab_users:
     notice = st.session_state.pop("admin_notice", None)

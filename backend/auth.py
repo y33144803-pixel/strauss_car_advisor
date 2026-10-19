@@ -23,7 +23,7 @@ import db
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROLES = ("employee", "rep", "admin")
 ROLE_LABELS = {"employee": "עובד", "rep": "נציג תחבורה", "admin": "מנהל"}
-MIN_PASSWORD_LENGTH = 6
+MIN_PASSWORD_LENGTH = 8
 USERNAME_RE = re.compile(r"^[0-9A-Za-zא-ת._-]{3,30}$")      # אותיות (גם עבריות), ספרות, נקודה, קו תחתון ומקף
 MAX_FAILED_ATTEMPTS = 5
 LOCK_SECONDS = 60
@@ -96,7 +96,10 @@ class LoginError(Exception):
 def _recent_failures(username: str) -> list[float]:
     cutoff = time.time() - LOCK_SECONDS
     recent = [t for t in _failures.get(username, []) if t >= cutoff]
-    _failures[username] = recent
+    if recent:
+        _failures[username] = recent
+    else:
+        _failures.pop(username, None)             # לא מצטברות רשומות ריקות (גם לשמות שלא קיימים)
     return recent
 
 
@@ -117,10 +120,19 @@ def authenticate(username: str, password: str) -> dict:
     return {"username": user["username"], "display_name": user["display_name"], "role": user["role"]}
 
 
-def change_password(username: str, old_password: str, new_password: str) -> None:
+def _check_current_password(username: str, password: str) -> dict:
+    """בדיקת הסיסמה הנוכחית באזור האישי, עם אותה הגנה מפני ניחושים כמו בכניסה."""
+    if len(_recent_failures(username)) >= MAX_FAILED_ATTEMPTS:
+        raise LoginError("יותר מדי ניסיונות כושלים. אפשר לנסות שוב בעוד דקה.")
     user = db.get_user(username)
-    if not user or not verify_password(old_password or "", user["password_hash"]):
+    if not user or not verify_password(password or "", user["password_hash"]):
+        _failures.setdefault(username, []).append(time.time())
         raise LoginError("הסיסמה הנוכחית שגויה.")
+    return user
+
+
+def change_password(username: str, old_password: str, new_password: str) -> None:
+    _check_current_password(username, old_password)
     if len(new_password or "") < MIN_PASSWORD_LENGTH:
         raise LoginError(f"הסיסמה החדשה קצרה מדי (לפחות {MIN_PASSWORD_LENGTH} תווים).")
     if new_password == old_password:
@@ -131,9 +143,7 @@ def change_password(username: str, old_password: str, new_password: str) -> None
 def change_username(username: str, password: str, new_username: str) -> dict:
     """מחליף שם משתמש (נדרשת הסיסמה הנוכחית). מחזיר את המשתמש המעודכן. השיחות וההתחברות נשמרות."""
     new_username = (new_username or "").strip()
-    user = db.get_user(username)
-    if not user or not verify_password(password or "", user["password_hash"]):
-        raise LoginError("הסיסמה שגויה.")
+    user = _check_current_password(username, password)
     if not USERNAME_RE.match(new_username):
         raise LoginError("שם משתמש חייב להכיל 3 עד 30 תווים: אותיות, ספרות, נקודה, קו תחתון או מקף (בלי רווחים).")
     if new_username == username:

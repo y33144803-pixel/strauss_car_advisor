@@ -13,7 +13,6 @@ BACKEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
-# הענף הראשון תופס סכום שכבר עטוף (כדי לא לעטוף שוב), השני סכום חשוף
 _BACKEND_MTIMES: dict[str, float] = {}
 
 
@@ -87,6 +86,7 @@ def user_avatar_css(display_name: str | None = None) -> str:
             "font-size: 1.6rem; }</style>")
 
 
+# הענף הראשון תופס סכום שכבר עטוף (כדי לא לעטוף שוב), השני סכום חשוף
 _AMOUNT_RE = re.compile(r"(⁦[^⁩]*⁩)|(\d[\d,]*(?:\.\d+)?\s?₪)")
 
 
@@ -458,7 +458,8 @@ def require_consent(sid: str) -> None:
     with st.container(key="consent-card", border=True):
         st.markdown("#### לפני שמתחילים")
         st.write("השיחות נשמרות לצורך מעקב ושיפור השירות, וגורמים מורשים בארגון (כמו מנהל המערכת) יכולים לצפות בהן. "
-                 "להמשך השיחה נדרש אישור.")
+                 "כדי לענות, הנתונים שתמסרו בשיחה (למשל שכר, פנסיה ונקודות זיכוי) נשלחים לשירות בינה מלאכותית "
+                 "חיצוני (Gemini של Google). להמשך השיחה נדרש אישור.")
         remember = st.checkbox("אל תזכירו לי שוב", key="consent_remember")
         if st.button("אני מאשר/ת", key="consent_button", type="primary"):
             approved.add(sid)
@@ -521,7 +522,16 @@ def current_user() -> dict | None:
         st.session_state.setdefault("user", {"username": "local", "display_name": "מקומי", "role": "both"})
         return st.session_state["user"]
     if st.session_state.get("user"):
-        return st.session_state["user"]
+        # בכל ריצה בודקים מול המסד שההתחברות עדיין תקפה: משתמש שנמחק, או שסיסמתו אופסה (האסימונים נמחקו),
+        # מנותק גם אם הלשונית שלו פתוחה. הבדיקה מרעננת גם את התפקיד ושם התצוגה
+        session_token = st.session_state.get("auth_token")
+        fresh = db.user_for_token(session_token) if isinstance(session_token, str) and session_token else None
+        if fresh is None:
+            st.session_state.pop("user", None)
+            st.session_state.pop("auth_token", None)
+            return None
+        st.session_state["user"] = fresh
+        return fresh
     try:
         token = st.context.cookies.get(COOKIE_NAME)
     except Exception:                      # סביבה בלי גישה לעוגיות (למשל בדיקות)

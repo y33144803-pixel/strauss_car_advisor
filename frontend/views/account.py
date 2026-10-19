@@ -3,7 +3,7 @@ import streamlit as st
 
 import auth
 import db
-from ui import logout, render_history_sidebar, require_role
+from ui import COOKIE_HOURS, logout, render_history_sidebar, require_role
 
 user = require_role("employee", "rep", "admin")
 st.subheader(f"שלום {user['display_name']}")
@@ -68,8 +68,13 @@ if st.session_state["account_form"] == "password":
             except auth.LoginError as error:
                 st.error(str(error))
             else:
+                # מנתקים את כל שאר המכשירים, ומנפיקים אסימון חדש להתחברות הנוכחית
+                db.clear_tokens(user["username"])
+                token = db.create_token(user["username"], COOKIE_HOURS)
+                st.session_state["auth_token"] = token
+                st.session_state["set_cookie"] = token
                 st.session_state["account_form"] = None
-                st.session_state["account_notice"] = "הסיסמה עודכנה."
+                st.session_state["account_notice"] = "הסיסמה עודכנה. שאר המכשירים נותקו."
                 st.rerun()
 
 st.divider()
