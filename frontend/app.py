@@ -12,7 +12,7 @@ import ui
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
 st.set_page_config(page_title="יועץ הרכב של שטראוס", page_icon=ui.avatar_for("assistant") or "🚗", layout="wide",
-                   initial_sidebar_state="expanded")
+                   initial_sidebar_state="auto")
 
 import auth
 import db

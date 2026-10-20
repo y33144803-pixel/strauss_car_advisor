@@ -1,5 +1,7 @@
 """רכיבי תצוגה משותפים למסכים: עיצוב RTL, זיהוי שיחה וכרטיס ההשוואה."""
 import html
+import functools
+import base64
 import json
 import os
 import re
@@ -50,6 +52,46 @@ def _find_bot_image() -> str:
 
 
 BOT_AVATAR = _find_bot_image()
+
+IMAGES_DIR = os.path.join(os.path.dirname(BACKEND_DIR), "images")
+_MIME_BY_EXTENSION = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "svg": "image/svg+xml", "webp": "image/webp"}
+
+
+def _embedded_image(folder: str, name: str, css_class: str, alt: str) -> str:
+    """תג תמונה (מוטבע ב-base64) לקובץ images/<name>.<סיומת>. אין קובץ - מחרוזת ריקה."""
+    for extension, mime in _MIME_BY_EXTENSION.items():
+        path = os.path.join(folder, f"{name}.{extension}")
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                data = base64.b64encode(f.read()).decode()
+            return f"<img class='{css_class}' alt='{alt}' src='data:{mime};base64,{data}'>"
+    return ""
+
+
+@functools.lru_cache(maxsize=4)
+def strauss_logo_html(folder: str = IMAGES_DIR) -> str:
+    """לוגו שטראוס לבאנר (images/strauss-logo.png|jpg|jpeg|svg|webp), עם מפריד. אין קובץ - מחרוזת ריקה."""
+    tag = _embedded_image(folder, "strauss-logo", "cb-strauss", "שטראוס")
+    return tag + "<span class='cb-sep'></span>" if tag else ""
+
+
+@functools.lru_cache(maxsize=4)
+def bot_icon_html(folder: str = IMAGES_DIR) -> str:
+    """אייקון הלוגו: הרובוט מתמונת הלוגו (images/carbot-icon.png, נוצר ע"י scripts/make_logo_icon.py). אין - הרובוט המצויר."""
+    return _embedded_image(folder, "carbot-icon", "cb-icon cb-icon-img", "CarBot") or BOT_ICON_SVG
+
+
+# אייקון הרובוט של CarBot (SVG פנימי, בלי קובץ): פנים מחייכות על רקע גרדיאנט
+BOT_ICON_SVG = (
+    "<svg class='cb-icon' viewBox='0 0 48 48' xmlns='http://www.w3.org/2000/svg'>"
+    "<defs><linearGradient id='cbg' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#7C3AA8'/>"
+    "<stop offset='1' stop-color='#E0489E'/></linearGradient></defs>"
+    "<rect width='48' height='48' rx='14' fill='url(#cbg)'/>"
+    "<rect x='9' y='13' width='30' height='22' rx='9' fill='#1E1636'/>"
+    "<circle cx='19' cy='23' r='3.6' fill='#5CE1FF'/><circle cx='29' cy='23' r='3.6' fill='#5CE1FF'/>"
+    "<path d='M19 29.5c1.6 1.8 8.4 1.8 10 0' stroke='#5CE1FF' stroke-width='2' fill='none' stroke-linecap='round'/>"
+    "<rect x='22.5' y='6' width='3' height='6' rx='1.5' fill='#fff'/><circle cx='24' cy='6' r='2.4' fill='#fff'/>"
+    "</svg>")
 
 
 def _find_login_image() -> str | None:
@@ -131,13 +173,60 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-
 .st-key-topbar img { border-radius: 14px; }
 
 /* באנר עליון קבוע, עם כפתורי הניווט (מסך עובד / מסך נציג) */
-.st-key-topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 1000002; padding: 8px 28px;
+.st-key-topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 1000002; padding: 8px 28px; min-height: 78px;
                  background: radial-gradient(circle at 12% 30%, rgba(255,255,255,.22), transparent 38%),
                              linear-gradient(100deg, var(--accent), var(--primary));
                  border-bottom: 3px solid rgba(255,255,255,.35); border-radius: 0 0 18px 18px;
                  box-shadow: 0 6px 18px rgba(80,20,110,.35); direction: rtl; }
 .st-key-topbar img { border: 3px solid rgba(255,255,255,.65); box-shadow: 0 3px 10px rgba(0,0,0,.25); }
 .st-key-topbar .bar-title { text-shadow: 0 1px 3px rgba(0,0,0,.25); }
+/* לוגו הבאנר: CarBot ומתחתיו "יועץ הרכב של שטראוס", במרכז הבאנר (ממוקם בצורה מוחלטת, לא תלוי בעמודות) */
+.st-key-topbar { gap: 0 !important; }
+.st-key-topbar > [data-testid="stElementContainer"]:has(.carbot-logo) { height: 0; min-height: 0; margin: 0; }
+.st-key-topbar [data-testid="stElementContainer"]:has(.carbot-logo), .st-key-topbar [data-testid="stElementContainer"]:has(.carbot-logo) [data-testid="stMarkdown"],
+.st-key-topbar [data-testid="stElementContainer"]:has(.carbot-logo) [data-testid="stMarkdownContainer"] { position: static !important; }
+/* הלוגו יושב ישירות על הבאנר הלבן (בלי כרטיס נפרד), כך שהבאנר והלוגו נראים כחלק אחד */
+.carbot-logo { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 2;
+               display: flex; align-items: center; gap: 14px; direction: ltr; white-space: nowrap; line-height: 1.05; }
+.carbot-logo .cb-icon { width: 46px; height: 46px; flex: none; filter: drop-shadow(0 3px 5px rgba(124,58,168,.35)); }
+.carbot-logo .cb-icon-img { width: auto; height: 50px; object-fit: contain; filter: none; margin: 0; border: 0 !important;
+                            box-shadow: none !important; border-radius: 0 !important; background: transparent; }
+.carbot-logo .cb-strauss { height: 46px; width: auto; max-width: 120px; object-fit: contain; mix-blend-mode: multiply; border: 0 !important; box-shadow: none !important;
+                           border-radius: 0 !important; }
+.carbot-logo .cb-sep { width: 2px; height: 36px; border-radius: 2px; background: linear-gradient(var(--primary), var(--accent)); opacity: .45; }
+.carbot-logo .cb-text { text-align: center; }
+.carbot-logo .cb-name { font-size: 1.9rem; font-weight: 900; letter-spacing: .3px; }
+.carbot-logo .cb-car, .carbot-logo .cb-bot { color: #74409F; -webkit-text-fill-color: #74409F; }
+.carbot-logo .cb-sub { font-size: .76rem; font-weight: 800; color: #2E1A5C; direction: rtl; text-shadow: none; margin-top: 1px; }
+.st-key-topbar .carbot-logo .cb-sub { color: #2E1A5C; }
+@media (max-width: 1250px) { .carbot-logo .cb-strauss { height: 34px; max-width: 90px; } .carbot-logo .cb-name { font-size: 1.6rem; } }
+@media (max-width: 1050px) { .carbot-logo .cb-strauss, .carbot-logo .cb-sep { display: none; } }
+/* מסכים בינוניים וצרים: הבאנר קומפקטי בשורה אחת (הלוגו מחליף את הכותרת), בלי שהעמודות יתפצלו לכמה שורות */
+@media (max-width: 1000px) {
+  .st-key-topbar .bar-title, .st-key-topbar .bar-sub { display: none; }
+}
+@media (max-width: 700px) {
+  .st-key-topbar { padding: 6px 12px; border-radius: 0 0 14px 14px; min-height: 66px; }
+  .st-key-topbar [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; gap: .4rem !important; }
+  .st-key-topbar [data-testid="stColumn"] { min-width: 0 !important; }
+  .st-key-topbar > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child { display: none; }
+  .st-key-topbar > [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child { flex: 1 1 auto !important; width: auto !important; }
+  .carbot-logo { left: auto; right: 12px; transform: translateY(-50%); }
+  .st-key-topbar [data-testid="stHorizontalBlock"] [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] { flex: 0 0 auto !important; width: auto !important; }
+  .st-key-topbar button, .st-key-topbar .nav-pill { white-space: nowrap; }
+  .st-key-topbar [data-testid="stColumn"] button, .st-key-topbar .nav-pill { font-size: .78rem; padding: 4px 8px; min-height: 0; }
+  .st-key-user-menu [data-testid="stPopoverButton"] { font-size: .8rem; padding: 2px 4px; }
+  .st-key-user-menu [data-testid="stPopoverButton"] [data-testid="stMarkdownContainer"] p, .st-key-user-menu [data-testid="stPopoverButton"] div[aria-hidden="true"] { display: none; }
+  .st-key-user-menu button::before { margin-inline-end: 0 !important; }
+  .carbot-logo { padding: 0 12px 0 8px; gap: 7px; }
+  .carbot-logo .cb-icon { width: 30px; height: 30px; }
+  .carbot-logo .cb-icon-img { width: auto; height: 32px; margin: 0; }
+  .carbot-logo .cb-name { font-size: 1.3rem; }
+  .carbot-logo .cb-sub { font-size: .58rem; }
+  .block-container { padding-top: 4.9rem; padding-left: .8rem; padding-right: .8rem; }
+  [data-testid="stSidebarContent"] { padding-top: 4.9rem; }
+  [data-testid="stSidebar"][aria-expanded="true"] { width: 85vw !important; min-width: 0 !important; max-width: 23rem !important; }
+}
 .st-key-user-menu { direction: ltr; display: flex; justify-content: flex-start; }
 .st-key-user-menu [data-testid="stPopoverButton"] { background: transparent !important; border: 0 !important; box-shadow: none !important; color: #fff;
                                                        font-weight: 700; padding: 4px 10px 4px 4px; }
@@ -163,6 +252,17 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-
 .st-key-topbar button { background: rgba(255,255,255,.16); border: 0; color: #fff; border-radius: 999px; white-space: nowrap; }
 .st-key-topbar button:hover { background: rgba(255,255,255,.32); color: #fff; }
 .st-key-topbar .nav-pill.active { background: #fff; color: var(--primary); font-weight: 700; }
+/* באנר בהיר: רקע לבן (הלוגו מעוצב ללבן) ופס גרדיאנט סגול-ורוד בתחתית; הניווט והתפריט בסגול */
+.st-key-topbar { background: #fff; border-bottom: 0; border-radius: 0 0 20px 20px; box-shadow: 0 4px 18px rgba(80,20,110,.18); }
+.st-key-topbar::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 6px; border-radius: 0 0 20px 20px;
+                        background: linear-gradient(90deg, var(--accent), var(--primary)); }
+.st-key-topbar, .st-key-topbar * { color: var(--primary); }
+.st-key-topbar a, .st-key-topbar .nav-pill, .st-key-topbar button { background: var(--soft); color: var(--primary); }
+.st-key-topbar a:hover, .st-key-topbar button:hover { background: #EBDDF5; color: var(--primary); }
+.st-key-topbar .nav-pill.active { background: var(--primary); color: #fff; }
+.st-key-topbar .nav-pill.active * { color: #fff; }
+.st-key-user-menu [data-testid="stPopoverButton"], .st-key-user-menu [data-testid="stPopoverButton"] * { color: var(--primary); }
+.st-key-user-menu [data-testid="stPopoverButton"]:hover { background: rgba(124,58,168,.10) !important; }
 
 /* כפתור העתקה מתחת לכל בועת הודעה: הסוכן - בצד שמאל, העובדת - בצד ימין */
 [data-testid="stChatMessage"] { position: relative; margin-bottom: 1.9rem; }
@@ -224,6 +324,9 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 
 /* פאנל הצד: "הנתונים שנקלטו עד כה" */
 [data-testid="stSidebarContent"] { padding-top: 6.4rem; }
+/* סרגל רחב יותר, כדי ששמות השיחות ייראו במלואם (ושם ארוך עדיין יורד לשורה שנייה במקום להיחתך) */
+[data-testid="stSidebar"][aria-expanded="true"] { width: 23rem !important; min-width: 23rem !important; }
+.st-key-chat-list button p { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.35; }
 [data-testid="stSidebarHeader"] { display: none; }
 /* כפתור צף לפתיחת הסרגל (נוצר ב-JS): מופיע רק כשהסרגל סגור. הכפתור המקורי של Streamlit נמצא בתוך ה-header המוסתר */
 #open-sidebar-fab { position: fixed; right: 18px; bottom: 18px; z-index: 1000010; width: 54px; height: 54px; border-radius: 50%;
@@ -391,7 +494,7 @@ def render_user_menu(user: dict, current=None) -> None:
     letter = json.dumps(name[0], ensure_ascii=False)
     st.markdown("<style>.st-key-user-menu button::before { content: " + letter + "; display: inline-flex; "
                 "align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; "
-                "background: #fff; color: var(--primary); font-weight: 800; font-size: 1.1rem; margin-inline-end: 10px; }"
+                "background: var(--primary); color: #fff; font-weight: 800; font-size: 1.1rem; margin-inline-end: 10px; }"
                 "</style>", unsafe_allow_html=True)
     main_col, name_col = st.columns([0.8, 1.3], vertical_alignment="center")
     main = MAIN_VIEW_BY_ROLE.get(user.get("role"))
@@ -416,16 +519,10 @@ def topbar(pages: list, current, user: dict | None = None) -> None:
     pages - דפי st.navigation המותרים; current - הדף הפעיל (מסומן בלבן, ולא כקישור).
     כשמשתמש מחובר: כפתור "יציאה". הקיבוע נעשה ב-CSS לפי המפתח "topbar"."""
     with st.container(key="topbar"):
-        title, mid, nav = st.columns([3.2, 2.6, 4.2], vertical_alignment="center")
-        title.markdown("<div class='bar-title'>🚗 יועץ הרכב של שטראוס</div>"
-                       "<div class='bar-sub'>מה יקרה לנטו שלי אם אחליף רכב, אעבור לרכב חשמלי או אוותר על הרכב?</div>",
-                       unsafe_allow_html=True)
-        with mid:                        # באמצע: הרובוט והכיתוב "היועץ שלך"
-            mascot, tagline = st.columns([1, 3], vertical_alignment="center")
-            if avatar_for("assistant"):
-                mascot.image(avatar_for("assistant"), width=64)
-            tagline.markdown("<div class='bar-title'>היועץ שלך</div><div class='bar-sub'>שואלים אותי הכול על הנטו</div>",
-                             unsafe_allow_html=True)
+        st.markdown(f"<div class='carbot-logo'>{strauss_logo_html()}{bot_icon_html()}<div class='cb-text'>"
+                    "<div class='cb-name'><span class='cb-car'>Car</span><span class='cb-bot'>Bot</span></div>"
+                    "<div class='cb-sub'>יועץ הרכב של שטראוס</div></div></div>", unsafe_allow_html=True)
+        _, nav = st.columns([6.6, 3.4], vertical_alignment="center")      # העמודה הימנית ריקה: הלוגו במרכז הוא הכותרת
         with nav:
             if not pages:                            # מסך הכניסה והמשתמשים המחוברים: הבאנר בלי כפתורי ניווט
                 if user and user.get("role") != "both":      # שם המשתמש בבאנר פותח תפריט: האזור האישי ויציאה
@@ -562,6 +659,8 @@ def get_session_id() -> str:
     import db
     owner = _owner_for_sessions()
     sid = st.query_params.get("sid") or st.session_state.get("sid")
+    if sid and not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", sid):
+        sid = None                                  # מזהה לא תקין ב-URL: מתעלמים ממנו
     if sid and owner and not db.claim_session(sid, owner):
         sid = None
     if not sid and owner:
@@ -707,6 +806,8 @@ def render_history_sidebar(current_sid: str | None, show_data_toggle: bool = Fal
             _open_session(st.session_state["sid"])
         if show_data_toggle:                       # מתג "הנתונים שנקלטו" - מתחת לכפתור "שיחה חדשה"
             st.toggle("הצג את הנתונים שנקלטו בצד", key="show_data")
+            if current_sid and db.load_state(current_sid).last_result:      # יש תוצאה: מתג ההשוואה מתחת למתג הנתונים
+                st.toggle("הצג השוואה מפורטת בצד", key="show_comparison")
         if not owner:                              # התחברות כבויה (פיתוח מקומי): אין היסטוריה אישית
             return
         pending = st.session_state.get("confirm_delete")
