@@ -43,15 +43,10 @@ def test_pdf_script_with_representative():
     v = verify_budget_and_eligibility(SID, "CAR-10")      # ATTO 3 חשמלי
     assert v["ok"] and v["data"]["eligible"] is True
     assert "electric_refund" in v["data"]
-    assert "השתתפות עובד ברכב החדש" in v["missing"]
 
-    # לפני שיש השתתפות - החישוב מסרב
-    assert calculate_net_salary(SID)["ok"] is False
-
-    # העובד לא יודע את ההשתתפות -> שאלה לנציג + השוואת ביניים
-    q = request_representative_info(SID, "new_participation", "השתתפות עובד ב-ATTO 3 לעובד קבוצה ג", True)
-    assert q["ok"]
-    provisional = q["data"]["provisional_comparison"]
+    # ההשתתפות ברכב החדש נקבעת בחברה: השאלה לנציג נפתחת אוטומטית (בקוד) יחד עם השוואת ביניים
+    assert v["data"]["representative_question_sent"] is True
+    provisional = v["data"]["comparison"]
     assert provisional["status"] == "provisional"
     assert provisional["alternative"]["participation"] == 300   # ברירת המחדל מהקטלוג
     assert db.load_state(SID).waiting_for_representative
@@ -108,9 +103,9 @@ def test_field_role_cannot_waive():
     assert v["data"]["eligible"] is False
 
 
-def test_unknown_occupation_rejected_with_list():
+def test_unknown_occupation_rejected_without_listing_the_table():
     r = update_employee_data(SID, occupation="אסטרונאוט")
-    assert r["ok"] is False and "מפתח/ת תוכנה" in r["error"]
+    assert r["ok"] is False and "לא נמצא" in r["error"] and "מפתח/ת תוכנה" not in r["error"]
 
 
 # ------------------------------------------------------------ זכאות
@@ -174,8 +169,10 @@ def test_changing_car_resets_participation():
     set_corolla_cross_today()
     verify_budget_and_eligibility(SID, "CAR-11")
     update_employee_data(SID, new_participation=300)
-    verify_budget_and_eligibility(SID, "CAR-10")            # רכב אחר
-    assert db.load_state(SID).target.participation is None
+    verify_budget_and_eligibility(SID, "CAR-10")            # רכב אחר: ההשתתפות של הקודם לא נשמרת
+    target = db.load_state(SID).target
+    assert target.participation == 300 and target.participation_status == "provisional"   # ברירת מחדל זמנית עד תשובת הנציג
+    assert len(db.list_questions("open")) == 1                                              # ונשלחה שאלה על הרכב החדש
 
 
 def test_new_participation_requires_chosen_car():
@@ -291,22 +288,15 @@ def test_switch_to_waiver_requires_occupation():
 def test_question_stays_tied_to_its_car_and_does_not_block_other_alternatives():
     fill_script_employee()
     set_corolla_cross_today()
-    verify_budget_and_eligibility(SID, "CAR-10")
-    request_representative_info(SID, "new_participation", "ATTO 3", True)
+    verify_budget_and_eligibility(SID, "CAR-10")                 # נשלחת אוטומטית שאלה על ה-ATTO 3
     assert db.load_state(SID).pending_inquiry_car == {"new_participation": "CAR-10"}
 
-    verify_budget_and_eligibility(SID, "CAR-11")                 # העובד בדק בינתיים רכב אחר
-    assert len(db.list_questions("open")) == 1                   # השאלה על ה-ATTO 3 נשארת
-    update_employee_data(SID, new_participation=300)             # והוא מסר השתתפות ל-EV3
-    assert calculate_net_salary(SID)["data"]["status"] == "final"   # השאלה על רכב אחר לא מעכבת
-
-    q = db.list_questions("open")[0]
-    db.answer_question(q["id"], 50.0, None, None)
-    events = apply_representative_answers(SID)                   # התשובה מחושבת על ה-ATTO 3
-    state = db.load_state(SID)
-    assert state.target.catalog_id == "CAR-10" and state.target.participation == 50.0
-    assert events[0]["car"].startswith("ATTO 3")
-    assert state.pending_inquiry_car == {} and not state.waiting_for_representative
+    verify_budget_and_eligibility(SID, "CAR-11")                 # העובד בדק בינתיים רכב אחר: השאלה עוברת אליו
+    assert len(db.list_questions("open")) == 1                   # נציג רואה רק את השאלה העדכנית
+    assert db.load_state(SID).pending_inquiry_car == {"new_participation": "CAR-11"}
+    update_employee_data(SID, new_participation=300)             # והעובד מסר בעצמו את ההשתתפות ב-EV3
+    assert db.list_questions("open") == []                       # השאלה מתבטלת
+    assert calculate_net_salary(SID)["data"]["status"] == "final"
 
 
 def test_representative_answer_computes_on_inquiry_car_after_waiver_check():
@@ -362,9 +352,9 @@ def test_no_auto_calculation_before_first_result():
     fill_script_employee()
     set_corolla_cross_today()
     verify_budget_and_eligibility(SID, "CAR-11")
+    assert db.load_state(SID).last_result["status"] == "provisional"   # השוואת ביניים נוצרה עם בחירת הרכב
     r = update_employee_data(SID, new_participation=300)
-    assert "comparison" not in r["data"]                         # עדיין לא הייתה תוצאה - המודל מפעיל חישוב ראשון
-    assert db.load_state(SID).last_result is None
+    assert r["data"]["comparison"]["status"] == "final"          # העובד מסר השתתפות: התוצאה הסופית מחושבת בקוד
 
 
 def test_changing_alternative_recalculates_once_data_is_complete():
@@ -374,8 +364,8 @@ def test_changing_alternative_recalculates_once_data_is_complete():
     update_employee_data(SID, new_participation=300)
     calculate_net_salary(SID)
 
-    v = verify_budget_and_eligibility(SID, "CAR-10")             # חלופה אחרת - ההשתתפות עוד חסרה
-    assert "comparison" not in v["data"] and db.load_state(SID).result_is_stale
+    v = verify_budget_and_eligibility(SID, "CAR-10")             # חלופה אחרת - ההשתתפות עוד לא ידועה: ביניים בלבד
+    assert v["data"]["comparison"]["status"] == "provisional" and v["data"]["representative_question_sent"]
     r = update_employee_data(SID, new_participation=300)         # עכשיו הכול קיים
     assert r["data"]["comparison"]["alternative"]["label"].startswith("ATTO 3")
     assert not db.load_state(SID).result_is_stale
@@ -397,10 +387,11 @@ def test_representative_requires_employee_confirmation_for_known_fields():
     fill_script_employee()
     set_corolla_cross_today()
     verify_budget_and_eligibility(SID, "CAR-10")
-    r = request_representative_info(SID, "new_participation", "x")
+    db.cancel_question(db.list_questions("open")[0]["id"])      # (נפתחה אוטומטית בבחירת הרכב)
+    r = request_representative_info(SID, "current_participation", "x")
     assert r["ok"] is False and "employee_confirmed_unknown" in r["next_step"]
     assert db.list_questions("open") == []                       # לא נפתחה שאלה
-    assert request_representative_info(SID, "new_participation", "x", employee_confirmed_unknown=True)["ok"]
+    assert request_representative_info(SID, "current_participation", "x", employee_confirmed_unknown=True)["ok"]
     # נתון שהעובד לא יכול לדעת - אין צורך באישור
     assert request_representative_info(SID, "current_car_usage_value", "x")["ok"]
 
@@ -594,8 +585,106 @@ def test_representative_flag_alone_is_not_enough_without_employee_saying_unknown
     fill_script_employee()
     set_corolla_cross_today()
     verify_budget_and_eligibility(SID, "CAR-10")
+    db.cancel_question(db.list_questions("open")[0]["id"])      # (נפתחה אוטומטית בבחירת הרכב)
     db.save_messages(SID, [{"role": "user", "content": "תחשב לי את הנטו"}])          # העובד לא אמר שאינו יודע
-    r = request_representative_info(SID, "new_participation", "x", employee_confirmed_unknown=True)
+    r = request_representative_info(SID, "current_participation", "x", employee_confirmed_unknown=True)
     assert r["ok"] is False and db.list_questions("open") == []
-    db.append_messages(SID, [{"role": "user", "content": "אני לא יודע כמה אשתתף, תשאל את הנציג"}])
-    assert request_representative_info(SID, "new_participation", "x", employee_confirmed_unknown=True)["ok"]
+    db.append_messages(SID, [{"role": "user", "content": "אני לא יודע כמה אני משתתף, תשאל את הנציג"}])
+    assert request_representative_info(SID, "current_participation", "x", employee_confirmed_unknown=True)["ok"]
+
+
+# ---------------------------------------------------------------- הגנה: רק מספרים שהעובד כתב
+
+def _model_update(**values):
+    from agent_tools_registry import model_function
+    return model_function("update_employee_data")(SID, **values)
+
+
+def test_model_cannot_save_numbers_the_employee_never_wrote():
+    db.append_messages(SID, [{"role": "user", "content": "12K 7 89"}])
+    result = _model_update(base_salary=12000, pension_rate=6, study_fund_rate=2.5, credit_points=2.25)
+    assert result["ok"] is False and "לא נאמר" in result["error"]
+    emp = db.load_state(SID).employee
+    assert emp.base_salary == 12000                                   # "12K" נאמר
+    assert emp.pension_rate is None and emp.study_fund_rate is None and emp.credit_points is None
+
+
+def test_model_may_save_numbers_in_any_written_form():
+    db.append_messages(SID, [{"role": "user", "content": "שכר 14,200, עמלות 1.000, פנסיה 6%, קה״ש 2,5 ונקודות 2.25"}])
+    assert _model_update(base_salary=14200, commissions=1000, pension_rate=6, study_fund_rate=2.5, credit_points=2.25)["ok"]
+    db.append_messages(SID, [{"role": "user", "content": "בעצם 15 אלף"}])
+    assert _model_update(base_salary=15000)["ok"]
+    assert _model_update(bonus=0)["ok"]                               # "אין" = 0 תמיד מותר
+
+
+def test_representative_answers_eligibility_group():
+    update_employee_data(SID, occupation="מנהל/ת מחלקה")
+    db.append_messages(SID, [{"role": "user", "content": "לא יודע לאיזו קבוצה אני שייך, תשאל את הנציג"}])
+    assert request_representative_info(SID, "eligibility_group", "העיסוק לא בטבלה", True)["ok"]
+    question = db.list_questions("open")[0]
+    db.answer_question(question["id"], None, None, "ב", answered_by="rep")
+    events = apply_representative_answers(SID)
+    assert events and db.load_state(SID).employee.eligibility_group == "ב"
+    assert db.load_state(SID).employee.group_source == "representative"
+
+
+def test_free_text_representative_answer_is_phrased_naturally():
+    from agent import check_representative_updates
+    db.append_messages(SID, [{"role": "user", "content": "לא יודע"}])
+    assert request_representative_info(SID, "other", "שאלה כלשהי", True)["ok"]
+    db.answer_question(db.list_questions("open")[0]["id"], None, None, "t", answered_by="rep")
+    message = check_representative_updates(SID)
+    assert message.startswith("הנציג ענה: t") and "אחר" not in message.split("\n")[0]
+
+
+def test_unknown_occupation_error_never_lists_the_whole_table():
+    result = update_employee_data(SID, occupation="מנהל מכירות")
+    assert result["ok"] is False
+    assert "אסור להציג" in result["error"] and "מפתח/ת תוכנה" not in result["error"]    # רק קרובים, לא כל הרשימה
+    assert "מנהל/ת אזור מכירות" in result["error"]
+
+
+def test_session_topic_is_focused():
+    from db import _topic
+    assert _topic(db.load_state(SID)) is None
+    update_employee_data(SID, eligibility_group="ג")
+    assert _topic(db.load_state(SID)) == "בדיקת נטו · קבוצה ג"
+    fill_script_employee()
+    set_corolla_cross_today()
+    verify_budget_and_eligibility(SID, "CAR-10")
+    assert _topic(db.load_state(SID)).startswith("מ-COROLLA CROSS") and "ATTO 3" in _topic(db.load_state(SID))
+    update_employee_data(SID, eligibility_group="ב", occupation="מפתח/ת תוכנה")
+    from actions import switch_alternative
+    assert switch_alternative(SID, "ויתור")["ok"]
+    assert _topic(db.load_state(SID)) == "ויתור על רכב · מפתח/ת תוכנה"
+
+
+def test_absurd_salary_is_rejected_when_typed_not_only_at_calculation():
+    for field in ("base_salary", "commissions", "bonus"):
+        r = update_employee_data(SID, **{field: 55_000_000})
+        assert r["ok"] is False and "גבוה מדי" in r["error"]
+    emp = db.load_state(SID).employee
+    assert emp.base_salary is None and emp.commissions is None and emp.bonus is None
+    assert update_employee_data(SID, base_salary=1_000_000)["ok"]            # הגבול עצמו מותר
+
+
+def test_feminine_forms_match_table_occupations():
+    from data_store import find_occupation
+    for typed, expected in (("מפתחת תוכנה", "מפתח/ת תוכנה"), ("מנהלת מחלקה", "מנהל/ת מחלקה"), ("טכנאית שירות", "טכנאי/ת שירות"),
+                            ("אנליסטית נתונים", "אנליסט/ית נתונים"), ("מפקחת איכות במפעל", "מפקח/ת איכות במפעל"),
+                            ("נציגת מכירות שטח", "נציג/ת מכירות שטח"), ("מפתח תוכנה", "מפתח/ת תוכנה")):
+        assert find_occupation(typed)["occupation"] == expected, typed
+    assert find_occupation("מנקה") is None and find_occupation("מנהל") is None        # לא מנחשים: חלקי/לא קיים
+
+
+def test_find_occupation_tolerates_definite_article_and_extra_words():
+    from data_store import find_occupation
+    assert find_occupation("רכזת הרכש")["occupation"] == "רכז/ת רכש"
+    assert find_occupation("רכזת רכש וקניות")["occupation"] == "רכז/ת רכש"
+    assert find_occupation("רכזת") is None and find_occupation("מנהלת רכש") is None
+
+
+def test_word_representative_alone_is_not_a_request_to_ask_the_rep():
+    import agent_tools
+    assert not agent_tools._UNKNOWN_RE.search("הנציג אמר לי שזה 300")
+    assert agent_tools._UNKNOWN_RE.search("תשאל את הנציג") and agent_tools._UNKNOWN_RE.search("אני לא יודע")

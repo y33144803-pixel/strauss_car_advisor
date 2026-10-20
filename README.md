@@ -70,7 +70,7 @@ pip install -r requirements.txt
 ```
 LLM_PROVIDER=gemini
 LLM_MODEL=gemini-3.1-flash-lite
-LLM_FALLBACK_MODELS=gemini-3.5-flash-lite,gemini-3.5-flash
+LLM_FALLBACK_MODELS=gemini-3.5-flash
 GOOGLE_API_KEY=המפתח-שלכם
 GOOGLE_API_KEY_2=            # אופציונלי: מפתח גיבוי
 AUTH_USERS=dana:סיסמה-ארוכה:employee:דנה כהן;moshe:סיסמה-אחרת:rep:משה לוי;admin:סיסמת-מנהל:admin:מנהל המערכת

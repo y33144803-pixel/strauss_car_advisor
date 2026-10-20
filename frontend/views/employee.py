@@ -8,6 +8,9 @@ import db
 from actions import pick_message, picker_state, recalculate, set_picker
 from agent import STATUS_ANALYZING, chat, check_representative_updates, friendly_error, pending_user_message, start_session
 from agent_tools import REP_FIELDS
+from data_store import find_occupation
+from payslip import (ALLOWED_TYPES, FIELD_LABELS, OCCUPATION_LABEL, PayslipError, apply_payslip, check_file,
+                     extract_payslip, summary_text)
 from ui import (CLOSE_PICKER, avatar_for, get_session_id, render_car_picker, render_comparison,
                 render_history_sidebar, render_state_card, require_consent, require_role, show_markdown, typing_status_html)
 
@@ -15,6 +18,7 @@ require_role("employee")                # רק עובדים (או התחברות
 logger = logging.getLogger("strauss.employee")
 sid = get_session_id()
 CHAT_HEIGHT = 480
+MAX_MESSAGE_CHARS = 2000      # תקרת אורך להודעת עובד (עלות מודל ונפח מסד)
 CHAT_HEIGHT_WITH_PICKER = 250
 
 st.session_state.setdefault("picker_nonce", 0)
@@ -26,7 +30,7 @@ render_history_sidebar(sid, show_data_toggle=True)    # שיחה חדשה + מת
 require_consent(sid)                    # אישור שמירת השיחות: בכל שיחה חדשה, אלא אם סימנו "אל תזכירו שוב"
 
 # בצד (עמודה שמאלית), לפי בקשת העובד: "הנתונים שנקלטו" ו/או ההשוואה המפורטת. אחרת כל המסך הוא שיחה.
-# המתגים עצמם מופיעים בשיחה (המתג של ההשוואה - מתחת להודעת ההשוואה האחרונה)
+# שני המתגים בסרגל הצד, מתחת לכפתור "שיחה חדשה"
 initial_state = db.load_state(sid)
 show_comparison = bool(initial_state.last_result and st.session_state["show_comparison"])
 show_data = bool(st.session_state["show_data"])
@@ -66,6 +70,92 @@ def run_turn(text: str | None) -> None:
             st.rerun()
     st.session_state.pop("chat_error", None)
     st.rerun()
+
+
+def confirm_payslip() -> None:
+    """העובד אישר (או תיקן) את הערכים שנקראו מהתלוש: שומרים אותם ושולחים לבוט הודעה שממשיכה את השיחה."""
+    proposal = st.session_state.pop("payslip_proposal", None)
+    if not proposal or proposal["sid"] != sid:
+        return
+    values = {key: float(st.session_state[f"payslip_{proposal['nonce']}_{key}"])
+              for key in proposal["fields"] if key != "occupation"}
+    # התפקיד הוא תיבת טקסט חופשית. אם הוא תואם עיסוק בטבלה - נשמר; אחרת הבוט מקבל אותו בהודעה ומטפל בו בשיחה
+    typed = (st.session_state.get(f"payslip_{proposal['nonce']}_occupation") or "").strip()
+    unmatched_job = None
+    if typed:
+        record = find_occupation(typed)
+        if record:
+            values["occupation"] = record["occupation"]
+        else:
+            unmatched_job = typed
+    outcome = apply_payslip(sid, values)
+    if not outcome["ok"]:
+        proposal["error"] = outcome["error"]               # הכרטיס נשאר עם מה שהעובד הקליד, והשגיאה מוצגת בו
+        st.session_state["payslip_proposal"] = proposal
+        return
+    st.session_state["payslip_text"] = ("העליתי תלוש שכר ואישרתי את הנתונים שנקראו ממנו: " + summary_text(values) + "."
+                                        + (f" התפקיד שלי: {unmatched_job}." if unmatched_job else ""))
+
+
+def cancel_payslip() -> None:
+    st.session_state.pop("payslip_proposal", None)
+
+
+def read_uploaded_payslip(uploaded, show_status) -> None:
+    """קורא קובץ שהועלה בשורת הצ'אט. נתונים ברורים ועקביים נשמרים מיד (העובד רואה מה נקלט בשיחה ויכול לתקן);
+    אם משהו לא ברור מוצג כרטיס אישור. הקובץ לא נשמר בשום מקום."""
+    try:
+        mime = check_file(uploaded.name, uploaded.size)
+        show_status("קורא את התלוש...")
+        result = extract_payslip(uploaded.getvalue(), mime)
+    except PayslipError as e:
+        st.session_state["payslip_notice"] = str(e)
+        return
+    st.session_state.pop("payslip_notice", None)
+    if not result.fields:
+        st.session_state["payslip_notice"] = "לא מצאתי בקובץ נתוני שכר. אפשר לנסות תלוש אחר או להקליד את הנתונים בשיחה."
+        return
+    if result.certain:
+        outcome = apply_payslip(sid, result.fields)
+        if outcome["ok"]:
+            note = (f" בתלוש מופיע התפקיד \"{result.job_title}\", שלא זוהה בבירור באחד העיסוקים בטבלה - נא לשאול אותי מה העיסוק."
+                    if result.job_title else
+                    f" (התפקיד שכתוב בתלוש: \"{result.occupation_from_title}\")" if result.occupation_from_title else "")
+            st.session_state["payslip_text"] = ("העליתי תלוש שכר. הנתונים שנקראו ממנו: "
+                                                + summary_text(result.fields) + "." + note)
+            return
+        result.reasons.append(outcome["error"])
+    nonce = st.session_state.get("payslip_nonce", 0) + 1
+    st.session_state["payslip_nonce"] = nonce
+    st.session_state["payslip_proposal"] = {"sid": sid, "fields": result.fields, "nonce": nonce,
+                                            "reasons": result.reasons, "job_title": result.job_title}
+
+
+def render_payslip_card() -> None:
+    notice = st.session_state.get("payslip_notice")
+    if notice:
+        st.warning(notice)
+    proposal = st.session_state.get("payslip_proposal")
+    if not proposal or proposal["sid"] != sid:
+        return
+    with st.container(key="payslip-card", border=True):
+        st.markdown("**קראתי מהתלוש - נא לאשר או לתקן**")
+        if proposal.get("error"):
+            st.error(f"לא הצלחתי לשמור: {proposal['error']}")
+        why = "; ".join(proposal.get("reasons") or [])
+        if proposal.get("job_title"):
+            why = (why + "; " if why else "") + f"התפקיד בתלוש (\"{proposal['job_title']}\") לא זוהה בבירור - אפשר לתקן אותו בשדה התפקיד"
+        st.caption((f"{why}. " if why else "") + "רק השדות שנמצאו בתלוש; מה שלא מופיע כאן - אשאל עליו בשיחה. "
+                   "הקובץ נשלח לקריאה אוטומטית ולא נשמר.")
+        cols = st.columns(2)
+        st.text_input(OCCUPATION_LABEL, value=proposal["fields"].get("occupation") or proposal.get("job_title") or "",
+                      placeholder="למשל: מפתח/ת תוכנה (אפשר להשאיר ריק)", key=f"payslip_{proposal['nonce']}_occupation")
+        for i, (key, value) in enumerate((k, v) for k, v in proposal["fields"].items() if k != "occupation"):
+            cols[i % 2].number_input(FIELD_LABELS[key], value=value, min_value=0.0, step=1.0 if "(₪)" in FIELD_LABELS[key] else 0.25,
+                                     format="%g", key=f"payslip_{proposal['nonce']}_{key}")
+        ok_col, cancel_col, _ = st.columns([1, 1, 2])
+        ok_col.button("אשר והמשך", type="primary", on_click=confirm_payslip, key="payslip_ok")
+        cancel_col.button("ביטול", on_click=cancel_payslip, key="payslip_cancel")
 
 
 watch_representative()
@@ -119,32 +209,45 @@ with chat_col:
 
 # תיבת הקלט מחוץ לעמודות: Streamlit מצמיד אותה תמיד לתחתית המסך. חלון השיחה מתאים את גובהו למסך (CSS),
 # ולכן הדף לא גולל בכל תור
-prompt = st.chat_input("כתוב/י כאן...")
-
-text = prompt or picked_text
+submitted = st.chat_input("כתוב/י כאן... (+ לצירוף תלוש שכר)", accept_file=True, file_type=sorted(ALLOWED_TYPES),
+                          max_chars=MAX_MESSAGE_CHARS)
+prompt = submitted.text if submitted else None
+upload = submitted.files[0] if submitted and submitted.files else None
+text = prompt or picked_text or st.session_state.pop("payslip_text", None)       # (הטקסט האחרון: אישור כרטיס התלוש)
 messages = start_session(sid)
 with chat_box:
-    last_comparison = max((i for i, m in enumerate(messages)
-                           if m["role"] == "assistant"
-                           and ("נטו היום" in m["content"] or m["content"].startswith("**השוואה"))),
-                          default=len(messages) - 1)       # אין הודעת השוואה בשיחה: המתג בסוף השיחה
-    for i, m in enumerate(messages):
+    for m in messages:
         with st.chat_message(m["role"], avatar=avatar_for(m["role"])):
             show_markdown(m["content"])
-        if i == last_comparison and initial_state.last_result:
-            # מתג "הצג השוואה מפורטת בצד" - מתחת להודעת ההשוואה האחרונה בשיחה
-            st.toggle("הצג השוואה מפורטת בצד", key="show_comparison")
+    if upload:
+        # קריאת התלוש מוצגת כמו כל פעולה של הבוט: בועה עם סטטוס חי ("קורא את התלוש...")
+        with st.chat_message("assistant", avatar=avatar_for("assistant")):
+            payslip_status = st.empty()
+            read_uploaded_payslip(upload, lambda label: payslip_status.markdown(typing_status_html(label),
+                                                                                unsafe_allow_html=True))
+            payslip_status.empty()
+        read_text = st.session_state.pop("payslip_text", None)
+        text = " ".join(t for t in (prompt, read_text) if t) or text
+        if not text:
+            st.rerun()                          # נקרא ונדרש אישור (או שהייתה שגיאה): מציירים מחדש את המסך
     if text:
+        st.session_state.pop("payslip_notice", None)
         with st.chat_message("user", avatar=avatar_for("user")):
             show_markdown(text)                 # ההודעה מוצגת מיד, בלי לחכות לתשובה
         run_turn(text)
     elif pending_user_message(sid):
-        st.warning(st.session_state.get("chat_error") or "ההודעה האחרונה שלך עדיין לא נענתה.")
-        if st.button("נסי שוב", type="primary"):
+        retry_slot = st.empty()                 # בלחיצה ההודעה והכפתור נעלמים מיד (לא רק אחרי שהבוט עונה)
+        with retry_slot.container():
+            st.warning(st.session_state.get("chat_error") or "ההודעה האחרונה שלך עדיין לא נענתה.")
+            retry = st.button("נסיון חוזר", type="primary")
+        if retry:
+            retry_slot.empty()
+            st.session_state.pop("chat_error", None)
             run_turn(None)
 
 state = db.load_state(sid)
 with chat_box:
+    render_payslip_card()
     if state.waiting_for_representative:
         waiting = ", ".join(REP_FIELDS.get(f, f) for f in state.pending_questions)
         st.info(f"שלחתי שאלה לנציג התחבורה ואני ממתין לתשובה: {waiting}. הדף מתעדכן אוטומטית.")

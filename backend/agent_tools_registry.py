@@ -21,8 +21,24 @@ def load_specs() -> list[dict]:
         return json.load(f)["tools"]
 
 
+def _guarded_update(session_id: str, **values):
+    """update_employee_data כפי שהמודל מפעיל אותו: ערכים מספריים שהעובד לא כתב בשיחה נדחים (הם לא נשמרים)."""
+    clean, errors = agent_tools.drop_unstated(session_id, values)
+    result = agent_tools.update_employee_data(session_id, **clean)
+    if errors:
+        result["ok"] = False
+        result["error"] = " | ".join(filter(None, [result.get("error"), *errors]))
+        result["next_step"] = "שאל את העובד על הערכים שלא נשמרו; אל תנחש"
+    return result
+
+
 def tool_function(name: str):
     return getattr(agent_tools, name)
+
+
+def model_function(name: str):
+    """הפונקציה שהמודל מפעיל (כמו tool_function, אבל עדכון נתונים עובר את בדיקת "רק מה שהעובד כתב")."""
+    return _guarded_update if name == "update_employee_data" else tool_function(name)
 
 
 def agent_description(spec: dict) -> str:
@@ -52,7 +68,7 @@ def build_tools(session_id: str) -> list:
 
     return [
         FunctionTool(
-            fn=tool_function(spec["name"]),
+            fn=model_function(spec["name"]),
             metadata=ToolMetadata(name=spec["name"], description=agent_description(spec),
                                   fn_schema=schema_class(spec)),
             partial_params={BOUND_PARAM: session_id},

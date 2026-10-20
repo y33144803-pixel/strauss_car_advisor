@@ -1,4 +1,5 @@
 """SQLite: שמירת מצב השיחות והשאלות לנציג, כדי שהתהליך ישרוד רענון ויעבור בין מסך העובד למסך הנציג."""
+import re
 import hashlib
 import json
 import os
@@ -89,6 +90,15 @@ def _init_schema() -> None:
                 except ValueError:
                     topic = None
                 conn.execute("UPDATE sessions SET topic = ? WHERE session_id = ?", (topic, row["session_id"]))
+        if "topic_v" not in columns:                   # ניסוח הנושא השתנה: מחשבים מחדש לשיחות קיימות
+            conn.execute("ALTER TABLE sessions ADD COLUMN topic_v INTEGER")
+            for row in conn.execute("SELECT session_id, state_json FROM sessions").fetchall():
+                try:
+                    topic = _topic(ConversationState.model_validate_json(row["state_json"]))
+                except ValueError:
+                    topic = None
+                conn.execute("UPDATE sessions SET topic = ?, topic_v = ? WHERE session_id = ?",
+                             (topic, TOPIC_VERSION, row["session_id"]))
         if "admin_viewed_at" not in columns:           # מתי מנהל צפה בשיחה לאחרונה, ומי
             conn.execute("ALTER TABLE sessions ADD COLUMN admin_viewed_at TEXT")
             conn.execute("ALTER TABLE sessions ADD COLUMN admin_viewed_by TEXT")
@@ -125,13 +135,21 @@ def load_state(session_id: str) -> ConversationState:
     return ConversationState.model_validate_json(row["state_json"])
 
 
+TOPIC_VERSION = 2       # גרסת ניסוח הנושא: העלאה מחשבת מחדש את הנושאים של שיחות קיימות
+
+
 def _topic(state: ConversationState) -> str | None:
-    """נושא השיחה לפי מה שהעובד ביקש לבדוק: ויתור על רכב, או השוואה לרכב מסוים. עוד לא ידוע - None."""
-    target = state.target
+    """נושא ממוקד לשיחה: מה בודקים (רכב נוכחי -> חלופה, או ויתור על רכב), ואם עוד לא נבחרה חלופה - הקבוצה."""
+    target, current, emp = state.target, state.current, state.employee
+    short = lambda label: re.sub(r"\s*\(\d{4}\)\s*$", "", label or "")       # בלי שנת הרישום: שם קצר וקריא בסרגל
     if target.kind == "waiver":
-        return "ויתור על רכב"
+        return f"ויתור על רכב · {emp.occupation}" if emp.occupation else "ויתור על רכב"
     if target.kind == "car" and target.label:
-        return f"השוואה ל-{target.label}"
+        if current.kind == "car" and current.label:
+            return f"מ-{short(current.label)} ל-{short(target.label)}"
+        return f"מעבר ל-{short(target.label)}"
+    if emp.eligibility_group:
+        return f"בדיקת נטו · קבוצה {emp.eligibility_group}"
     return None
 
 
@@ -150,10 +168,10 @@ def save_state(state: ConversationState) -> None:
     init_db()
     with closing(_connect()) as conn, conn:
         conn.execute("""
-            INSERT INTO sessions (session_id, state_json, created_at, updated_at, topic) VALUES (?, ?, ?, ?, ?)
+            INSERT INTO sessions (session_id, state_json, created_at, updated_at, topic, topic_v) VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(session_id) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at,
-                                                  topic = excluded.topic
-        """, (state.session_id, state.model_dump_json(), _now(), _now(), _topic(state)))
+                                                  topic = excluded.topic, topic_v = excluded.topic_v
+        """, (state.session_id, state.model_dump_json(), _now(), _now(), _topic(state), TOPIC_VERSION))
 
 
 def load_messages(session_id: str) -> list[dict]:

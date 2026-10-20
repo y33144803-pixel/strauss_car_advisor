@@ -6,6 +6,9 @@ __pycache__/
 .env
 storage/
 *.db
+users_backup.json
+*.pdf
+.env.*
 backend/tests/
 frontend/tests/
 scripts/__pycache__/

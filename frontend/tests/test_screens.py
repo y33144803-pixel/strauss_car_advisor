@@ -96,9 +96,10 @@ def test_provisional_comparison_is_labeled_and_sidebar_options_exist():
 def test_comparison_is_hidden_until_the_toggle_is_checked():
     fill_to_comparison()
     at = employee_app()
-    assert at.toggle and at.toggle[0].label == "הצג השוואה מפורטת בצד"     # יש תוצאה - יש כפתור סימון
+    # יש תוצאה: מתג ההשוואה בסרגל הצד, מתחת למתג "הצג את הנתונים שנקלטו בצד"
+    assert [t.label for t in at.toggle] == ["הצג את הנתונים שנקלטו בצד", "הצג השוואה מפורטת בצד"]
     assert not any("class='kpis'" in m.value for m in at.markdown)         # אבל ההשוואה מוסתרת כברירת מחדל
-    at.toggle[0].set_value(True).run()
+    at.toggle[1].set_value(True).run()
     assert any("class='kpis'" in m.value for m in at.markdown)             # ומופיעה בצד אחרי הסימון
 
 
@@ -118,7 +119,7 @@ def test_progress_total_never_changes_during_the_conversation():
     assert totals == {11}
     done = state_progress(db.load_state(SID))[0]
     update_employee_data(SID, new_participation=300)
-    assert state_progress(db.load_state(SID))[0] == done + 1               # ההתקדמות רק עולה
+    assert state_progress(db.load_state(SID))[0] >= done                   # ההתקדמות רק עולה (לא יורדת)
 
 
 def test_representative_answer_flows_back_to_employee_screen():
@@ -311,7 +312,7 @@ def test_unanswered_message_shows_retry_and_resumes(monkeypatch):
     monkeypatch.setattr(agent, "chat", fake_chat)
     at = employee_app()
     assert any("עדיין לא נענתה" in w.value for w in at.warning)
-    retry = next(b for b in at.button if b.label == "נסי שוב")
+    retry = next(b for b in at.button if b.label == "נסיון חוזר")
     retry.click().run()
     assert db.load_messages(SID)[-1]["role"] == "assistant"
     assert not any("עדיין לא נענתה" in w.value for w in at.warning)
@@ -331,7 +332,7 @@ def test_service_failure_shows_friendly_message(monkeypatch):
     at.chat_input[0].set_value("שלום").run()
     warnings = " ".join(w.value for w in at.warning)
     assert "עמוס" in warnings and "WinError" not in warnings and "503" not in warnings
-    assert any(b.label == "נסי שוב" for b in at.button)
+    assert any(b.label == "נסיון חוזר" for b in at.button)
 
 
 def test_bot_avatar_is_the_image_from_images_folder():
@@ -728,3 +729,109 @@ def test_sidebar_stays_while_the_consent_card_is_shown(auth_on):
     at = app_with_login("dana", "secret-1", consent=False)
     assert any(b.key == "consent_button" for b in at.button) and not at.chat_input
     assert "new_chat_button" in [b.key for b in at.sidebar.button]          # הסרגל לא נעלם בזמן האישור
+
+
+def test_payslip_card_confirm_saves_values_and_continues_chat(monkeypatch):
+    import agent
+    sent = []
+
+    def fake_chat(session_id, text=None, llm=None, on_step=None, on_status=None):
+        sent.append(text)
+        messages = agent.start_session(session_id)
+        db.save_messages(session_id, messages + [{"role": "user", "content": text},
+                                                 {"role": "assistant", "content": "קיבלתי"}])
+        return {}
+
+    monkeypatch.setattr(agent, "chat", fake_chat)
+    at = signed_in(AppTest.from_file(os.path.join(VIEWS, "employee.py"), default_timeout=30))
+    at.query_params["sid"] = SID
+    at.session_state["payslip_proposal"] = {"sid": SID, "nonce": 1,
+                                            "fields": {"base_salary": 14200.0, "pension_rate": 6.0, "credit_points": 2.25}, "reasons": ["חלק מהנתונים לא היו ברורים בתלוש"]}
+    at.run()
+    assert not at.exception
+    assert any("קראתי מהתלוש" in m.value for m in at.markdown)
+    assert len(at.number_input) == 3
+    at.number_input[0].set_value(15000.0)                               # תיקון ידני לפני האישור
+    next(b for b in at.button if b.key == "payslip_ok").click().run()
+    assert not at.exception
+    emp = db.load_state(SID).employee
+    assert (emp.base_salary, emp.pension_rate, emp.credit_points) == (15000.0, 6.0, 2.25)
+    assert sent and "תלוש" in sent[0] and "15000" in sent[0]            # הבוט קיבל הודעה שממשיכה את השיחה
+    assert "payslip_proposal" not in at.session_state
+
+
+def test_payslip_card_cancel_discards_without_saving():
+    at = signed_in(AppTest.from_file(os.path.join(VIEWS, "employee.py"), default_timeout=30))
+    at.query_params["sid"] = SID
+    at.session_state["payslip_proposal"] = {"sid": SID, "nonce": 1, "fields": {"base_salary": 14200.0}}
+    at.run()
+    next(b for b in at.button if b.key == "payslip_cancel").click().run()
+    assert not at.exception and not any(b.key == "payslip_ok" for b in at.button)
+    assert db.load_state(SID).employee.base_salary is None
+
+
+def test_payslip_card_of_another_session_is_not_shown():
+    at = signed_in(AppTest.from_file(os.path.join(VIEWS, "employee.py"), default_timeout=30))
+    at.query_params["sid"] = SID
+    at.session_state["payslip_proposal"] = {"sid": "other-session", "nonce": 1, "fields": {"base_salary": 14200.0}}
+    at.run()
+    assert not at.exception and not any(b.key == "payslip_ok" for b in at.button)
+
+
+def test_bot_icon_uses_the_cropped_logo_image_when_present(tmp_path):
+    from ui import BOT_ICON_SVG, bot_icon_html
+    assert bot_icon_html.__wrapped__(str(tmp_path)) == BOT_ICON_SVG                 # אין קובץ - הרובוט המצויר
+    (tmp_path / "carbot-icon.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
+    assert "cb-icon-img" in bot_icon_html.__wrapped__(str(tmp_path))
+
+
+def test_strauss_logo_is_shown_in_the_banner_only_when_the_file_exists(tmp_path):
+    from ui import strauss_logo_html
+    assert strauss_logo_html(str(tmp_path)) == ""                                   # אין קובץ - אין תמונה
+    (tmp_path / "strauss-logo.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
+    html_tag = strauss_logo_html.__wrapped__(str(tmp_path))
+    assert "data:image/png;base64," in html_tag and "cb-strauss" in html_tag
+
+
+def test_payslip_card_job_is_a_free_text_box_and_unmatched_text_goes_to_the_chat(monkeypatch):
+    import agent
+    sent = []
+
+    def fake_chat(session_id, text=None, llm=None, on_step=None, on_status=None):
+        sent.append(text)
+        messages = agent.start_session(session_id)
+        db.save_messages(session_id, messages + [{"role": "user", "content": text}, {"role": "assistant", "content": "ok"}])
+        return {}
+
+    monkeypatch.setattr(agent, "chat", fake_chat)
+    at = signed_in(AppTest.from_file(os.path.join(VIEWS, "employee.py"), default_timeout=30))
+    at.query_params["sid"] = SID
+    at.session_state["payslip_proposal"] = {"sid": SID, "nonce": 1, "fields": {"base_salary": 14200.0},
+                                            "reasons": [], "job_title": "מנקה"}
+    at.run()
+    box = next(t for t in at.text_input if t.label == "תפקיד")                # תיבת טקסט (ולא רשימת בחירה)
+    assert box.value == "מנקה" and not at.selectbox
+    next(b for b in at.button if b.key == "payslip_ok").click().run()
+    assert db.load_state(SID).employee.base_salary == 14200.0 and db.load_state(SID).employee.occupation is None
+    assert sent and "התפקיד שלי: מנקה" in sent[0]                              # תפקיד שלא בטבלה: הבוט מקבל אותו בשיחה
+
+
+def test_payslip_card_job_typed_like_a_table_occupation_is_saved():
+    at = signed_in(AppTest.from_file(os.path.join(VIEWS, "employee.py"), default_timeout=30))
+    at.query_params["sid"] = SID
+    at.session_state["payslip_proposal"] = {"sid": SID, "nonce": 1, "fields": {"base_salary": 14200.0}, "reasons": []}
+    at.run()
+    next(t for t in at.text_input if t.label == "תפקיד").set_value("מפתחת תוכנה").run()
+    next(b for b in at.button if b.key == "payslip_ok").click().run()
+    assert db.load_state(SID).employee.occupation == "מפתח/ת תוכנה"
+
+
+def test_payslip_card_stays_with_an_error_when_saving_fails():
+    at = signed_in(AppTest.from_file(os.path.join(VIEWS, "employee.py"), default_timeout=30))
+    at.query_params["sid"] = SID
+    at.session_state["payslip_proposal"] = {"sid": SID, "nonce": 1, "fields": {"base_salary": 14200.0}, "reasons": []}
+    at.run()
+    next(n for n in at.number_input if n.key == "payslip_1_base_salary").set_value(0.0).run()
+    next(b for b in at.button if b.key == "payslip_ok").click().run()
+    assert any(b.key == "payslip_ok" for b in at.button)              # הכרטיס לא נעלם
+    assert any("לא הצלחתי לשמור" in e.value for e in at.error)

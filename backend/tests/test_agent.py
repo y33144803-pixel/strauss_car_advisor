@@ -104,7 +104,7 @@ def test_representative_answer_resumes_conversation():
                                           "employee_confirmed_unknown": True})],
         "חסר לי סכום ההשתתפות שלך ברכב החדש - שלחתי שאלה לנציג התחבורה.",
     ])
-    chat(SID, "כל הנתונים... ואני לא יודע כמה אשתתף ברכב החדש", llm=llm)
+    chat(SID, "קבוצה ג, שכר 14200, עמלות 1000, פנסיה 6, קרן השתלמות 2.5, נקודות 2.25, השתתפות היום 300, ואני לא יודע כמה אשתתף ברכב החדש", llm=llm)
     state = db.load_state(SID)
     assert state.waiting_for_representative and state.last_result["status"] == "provisional"
 
@@ -462,3 +462,62 @@ def test_claim_of_contacting_rep_is_allowed_when_question_is_open():
     db.create_question(SID, "new_participation", "הקשר", "סיכום")
     llm = ScriptedLLM(["שלחתי שאלה לנציג התחבורה ואני ממתין לתשובה."])
     assert "שלחתי שאלה לנציג" in chat(SID, "תודה", llm=llm)["reply"]
+
+
+def test_claiming_saved_without_a_tool_triggers_a_correction_round():
+    """הבוט כתב "שמרתי" אחרי "לא ולא" בלי להפעיל כלי: מקבל הודעת תיקון ואז שומר באמת."""
+    llm = ScriptedLLM([
+        "קיבלתי, שמרתי את הנתונים: בונוס 0 ואין רכב.",
+        [("update_employee_data", {"bonus": 0})],
+        [("set_current_situation", {"kind": "none"})],
+        "שמרתי: בונוס 0, ואין לך רכב היום.",
+    ])
+    result = chat(SID, "לא ולא", llm=llm)
+    assert [t["tool"] for t in result["tool_calls"]] == ["update_employee_data", "set_current_situation"]
+    state = db.load_state(SID)
+    assert state.employee.bonus == 0 and state.current.kind == "none"
+    assert result["reply"].startswith("שמרתי: בונוס 0")
+
+
+def test_saved_claim_after_payslip_upload_is_not_corrected():
+    llm = ScriptedLLM(["מעולה, הנתונים נקלטו. מה העיסוק שלך?"])
+    result = chat(SID, "העליתי תלוש שכר. הנתונים שנקראו ממנו: שכר בסיס 14200.", llm=llm)
+    assert result["reply"].startswith("מעולה, הנתונים נקלטו")
+
+
+def test_cash_out_request_gets_an_explicit_refusal_even_if_the_model_skips_it():
+    llm = ScriptedLLM([
+        "איזה נתונים תרצה להשלים כעת? עמלות, פנסיה?",
+        "מדיניות החברה אינה מאפשרת להמיר תקציב רכב שלא נוצל לכסף בשכר. אפשר להמשיך: האם יש עמלות?",
+    ])
+    result = chat(SID, "אני לא משתמש בכל תקציב הרכב שלי - אפשר לקבל את ההפרש כמזומן בשכר?", llm=llm)
+    assert "אינה מאפשרת" in result["reply"] and not db.list_questions("open")
+
+
+def test_cash_out_detection_does_not_trigger_on_ordinary_messages():
+    from agent import _CASH_OUT_RE
+    for text in ("קבוצה ג, שכר 15000", "אני רוצה לעבור לרכב חשמלי", "יש לי עמלות של 1000 ש״ח"):
+        assert not _CASH_OUT_RE.search(text)
+    for text in ("אפשר לקבל את תקציב הרכב בכסף?", "אני רוצה פדיון של התקציב שלא ניצלתי", "מגיעים לי דמי ויתור"):
+        assert _CASH_OUT_RE.search(text)
+
+
+def test_cash_out_refusal_is_added_in_code_when_the_model_keeps_ignoring_it():
+    llm = ScriptedLLM(["אילו נתונים חסרים? עמלות, פנסיה?", "אנא כתוב/י את העמלות והפנסיה."])
+    result = chat(SID, "אפשר לקבל את תקציב הרכב שלא ניצלתי בכסף?", llm=llm)
+    assert result["reply"].startswith("מדיניות החברה אינה מאפשרת") and "עמלות" in result["reply"]
+
+
+def test_unsupported_amounts_ignores_years_but_not_money():
+    from agent import unsupported_amounts
+    assert unsupported_amounts("המחירון של שנת 2026 נכון", set()) == []
+    assert unsupported_amounts("זה יעלה 2026 ₪", set()) == ["2026"]
+    assert unsupported_amounts("זה יעלה 2,026", set()) == ["2,026"]
+
+
+def test_cash_out_and_saved_claim_patterns_are_not_too_broad():
+    from agent import _CASH_OUT_RE, _SAVED_CLAIM_RE
+    assert not _CASH_OUT_RE.search("כמה כסף אפסיד אם אעבור לרכב חשמלי?")
+    assert _CASH_OUT_RE.search("אפשר לקבל כסף על הרכב?") and _CASH_OUT_RE.search("אני לא משתמש בכל תקציב הרכב - אפשר לקבל את ההפרש כמזומן?")
+    assert not _SAVED_CLAIM_RE.search("הנתונים נשמרים רק לצורך השיחה")
+    assert _SAVED_CLAIM_RE.search("שמרתי את השכר") and _SAVED_CLAIM_RE.search("הנתון נשמר.")

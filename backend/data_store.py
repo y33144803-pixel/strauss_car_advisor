@@ -53,9 +53,29 @@ def find_car_by_name(commercial_name: str) -> list[dict]:
     return [c for c in get_catalog() if matches(c)]
 
 
+def _occupation_words(text: str) -> list[str]:
+    """מילות העיסוק אחרי נרמול, בלי ה' הידיעה בתחילת מילה ("הרכש" = "רכש")."""
+    text = re.sub(r"/(?:ית|ת|ה)(?![א-ת])", "", text)
+    words = []
+    for word in re.split(r"[\s\-]+", text):
+        word = "".join(ch for ch in word if ch.isalnum())
+        if len(word) > 3 and word.startswith("ה"):
+            word = word[1:]
+        if len(word) > 3 and word.endswith("ית"):
+            word = word[:-2]
+        elif len(word) > 3 and word.endswith("ת"):
+            word = word[:-1]
+        if len(word) > 3 and word.endswith("י"):
+            word = word[:-1]
+        if word:
+            words.append(word)
+    return words
+
+
 def _normalize_occupation(text: str) -> str:
-    """השוואה רפויה של עיסוקים: בלי סימני לשון זכר/נקבה ("/ת"), גרשיים ורווחים ("מפתח/ת תוכנה" = "מפתח תוכנה")."""
-    return "".join(ch for ch in re.sub(r"/[תה](?![א-ת])", "", text) if ch.isalnum())
+    """השוואה רפויה של עיסוקים: בלי "/ת", סיומות נקבה ("מפתחת" = "מפתח/ת"), ה' הידיעה, גרשיים ורווחים.
+    אותו נרמול לשם מהטבלה ולטקסט שהוקלד, ולכן "מפתחת תוכנה" = "מפתח/ת תוכנה"."""
+    return "".join(_occupation_words(text))
 
 
 def find_occupation(name: str) -> dict | None:
@@ -69,4 +89,12 @@ def find_occupation(name: str) -> dict | None:
         return None
     matches = [o for o in occupations if wanted == _normalize_occupation(o["occupation"])
                or (len(wanted) >= 4 and wanted in _normalize_occupation(o["occupation"]))]
-    return matches[0] if len(matches) == 1 else None
+    if len(matches) == 1:
+        return matches[0]
+    if matches:
+        return None
+    # התאמה גמישה: כל מילות העיסוק שבטבלה מופיעות בטקסט ("רכזת הרכש וקניות"), או להפך - רק אם חד-משמעית
+    typed = set(_occupation_words(name))
+    loose = [o for o in occupations
+             if len(_occupation_words(o["occupation"])) >= 2 and set(_occupation_words(o["occupation"])) <= typed]
+    return loose[0] if len(loose) == 1 else None

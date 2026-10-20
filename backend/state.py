@@ -28,7 +28,7 @@ class EmployeeData(BaseModel):
     study_fund_rate: Optional[float] = None
     credit_points: Optional[float] = None
     occupation: Optional[str] = None          # נדרש רק לוויתור על רכב
-    group_source: Optional[Literal["employee", "occupation"]] = None   # מי קבע את קבוצת הזכאות
+    group_source: Optional[Literal["employee", "occupation", "representative"]] = None   # מי קבע את קבוצת הזכאות
     group_conflict: Optional[str] = None      # סתירה פתוחה בין הקבוצה שהעובד ציין לקבוצת העיסוק בטבלה
     children_under_23: Optional[int] = None   # נדרש רק למסלול ברוכת ילדים
     children_ages: Optional[list[int]] = None  # גילאי הילדים, אם העובד מסר (העוגן לספירה ולהסבר דחייה)

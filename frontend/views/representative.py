@@ -6,6 +6,7 @@ import streamlit as st
 
 import db
 from agent_tools import REP_FIELDS
+from data_store import get_rules
 from ui import badge, page_header, require_role
 
 rep_user = require_role("rep")          # רק נציגים (התחברות עם שם משתמש וסיסמה)
@@ -30,6 +31,13 @@ def open_questions() -> None:
                 + (f"<div class='q-chips'>{html.escape(q['employee_summary'])}</div>" if q["employee_summary"] else ""),
                 unsafe_allow_html=True)
             free_text = q["missing_field"] == "other"      # תשובה חופשית - אין סכום חובה
+            if q["missing_field"] == "eligibility_group":
+                with st.form(f"answer_{q['id']}"):         # הנציג בוחר קבוצת זכאות (אין סכום)
+                    group = st.selectbox("קבוצת הזכאות של העובד", get_rules()["groupOrder"], key=f"group_{q['id']}")
+                    if st.form_submit_button("שלח תשובה", type="primary"):
+                        db.answer_question(q["id"], None, None, group, answered_by=rep_user["username"])
+                        st.rerun(scope="app")
+                continue
             with st.form(f"answer_{q['id']}"):
                 # value=None: שדה ריק. בלי זה ברירת המחדל 0 הייתה נשמרת בטעות כהשתתפות של 0 ₪
                 value = st.number_input("הסכום (₪)" + ("" if free_text else " - חובה"), min_value=0.0, max_value=50000.0, step=50.0,

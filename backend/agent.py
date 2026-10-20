@@ -24,6 +24,7 @@ HISTORY_LIMIT = 40        # כמה הודעות אחרונות נשלחות למ
 
 GREETING = ("שלום! אני יועץ הרכב של שטראוס 🚗\n"
             "אפשר לבדוק איך ישתנה הנטו שלך אם תחליף/י רכב, תעבור/י לרכב חשמלי או תוותר/י על הרכב.\n"
+            "(אם נוח, אפשר גם לצרף תלוש שכר בכפתור ה-+ בתיבת הכתיבה, ואקרא ממנו את הנתונים.)\n"
             "מה תרצה/י לעשות?")
 
 
@@ -31,7 +32,7 @@ logger = logging.getLogger("strauss.agent")
 
 DEFAULT_MODELS = {"gemini": "gemini-3.1-flash-lite", "openai": "gpt-4o"}
 # מודלי גיבוי כשאין LLM_FALLBACK_MODELS ב-.env (הגדרה ריקה = בלי גיבוי)
-DEFAULT_FALLBACKS = {"gemini": ["gemini-3.5-flash-lite", "gemini-3.5-flash"], "openai": []}
+DEFAULT_FALLBACKS = {"gemini": ["gemini-3.5-flash"], "openai": []}
 
 
 class LLMNotConfigured(RuntimeError):
@@ -47,8 +48,8 @@ def friendly_error(error: Exception) -> str:
     if isinstance(error, LLMNotConfigured):
         return "הבוט עדיין לא מוגדר (חסר מפתח לשירות הבינה המלאכותית). יש לפנות למי שהתקין את המערכת."
     if isinstance(error, LLMUnavailable):
-        return "שירות הבינה המלאכותית עמוס או לא זמין כרגע. אפשר ללחוץ על \"נסי שוב\" בעוד רגע."
-    return "אירעה תקלה בלתי צפויה. אפשר ללחוץ על \"נסי שוב\"."
+        return "שירות הבינה המלאכותית עמוס או לא זמין כרגע. אפשר ללחוץ על \"נסיון חוזר\" בעוד רגע."
+    return "אירעה תקלה בלתי צפויה. אפשר ללחוץ על \"נסיון חוזר\"."
 
 
 def _provider() -> str:
@@ -95,9 +96,9 @@ def get_llm(model: str, key_index: int = 0):
         # לא קובעים טמפרטורה: מודלי Gemini 3 ומעלה עלולים להיכשל אם היא מוגדרת
         from google.genai import types
         # מגבלת זמן קצרה (באלפיות שנייה) וללא ניסיונות חוזרים פנימיים - מודל גיבוי הוא הניסיון החוזר.
-        # כך גם במקרה הגרוע (אין חיבור) ההמתנה מוגבלת לכ-20 שניות לכל מודל ולא לדקות.
+        # כך גם במקרה הגרוע (אין חיבור) ההמתנה מוגבלת לכ-15 שניות לכל מודל ולא לדקות.
         return GoogleGenAI(model=model, api_key=api_key, max_retries=0,
-                           http_options=types.HttpOptions(timeout=20_000))
+                           http_options=types.HttpOptions(timeout=15_000))
 
     if provider == "openai":
         api_key = os.environ.get("OPENAI_API_KEY")
@@ -281,13 +282,14 @@ def check_representative_updates(session_id: str) -> str | None:
     lines = []
     for ev in events:
         if "field" in ev:
-            text = f"הנציג ענה לגבי {ev['field']}" + (f" ({ev['car']})" if ev.get("car") else "")
+            text = "הנציג ענה" if ev["field"] == REP_FIELDS["other"] else f"הנציג ענה לגבי {ev['field']}"
+            text += f" ({ev['car']})" if ev.get("car") else ""
             if ev["value"] is not None:
                 text += f": {ev['value']:,.0f} ₪"
             if ev.get("effective_from"):
                 text += f", בתוקף מ-{ev['effective_from']}"
             if ev.get("note"):
-                text += f" ({ev['note']})"
+                text += f" ({ev['note']})" if ev["value"] is not None else f": {ev['note']}"
             lines.append(text + ".")
     recalculated = next((ev["recalculated"] for ev in events if "recalculated" in ev), None)
     if recalculated:
@@ -302,6 +304,7 @@ def check_representative_updates(session_id: str) -> str | None:
 SAFE_REPLY = ("כדי שלא אציג לך מספרים שלא אומתו, אני צריך להריץ את החישוב על הנתונים השמורים. "
               "אפשר לנסח שוב את הבקשה, או לתקן נתון שחסר?")
 _NUMBER_RE = re.compile(r"\d[\d,]*(?:\.\d+)?")
+_MONEY_AFTER_RE = re.compile(r"\s*(?:₪|שקל|ש\"ח|שח|ש״ח)")
 
 
 def _numbers(text: str) -> set[float]:
@@ -325,10 +328,13 @@ def _evidence(session_id: str, messages: list[dict], tool_log: list[dict]) -> se
 def unsupported_amounts(reply: str, evidence: set[float]) -> list[str]:
     """סכומים (3 ספרות ומעלה) שמופיעים בתשובה ואינם מגובים בראיות. סטייה של 1 מותרת (עיגול)."""
     bad = []
-    for token in _NUMBER_RE.findall(reply):
+    for found in _NUMBER_RE.finditer(reply):
+        token = found.group()
         value = float(token.replace(",", "").rstrip("."))
         if value < 100:
             continue                      # אחוזים, נקודות זיכוי, מספרי רשימה
+        if 1990 <= value <= 2100 and "," not in token and not _MONEY_AFTER_RE.match(reply, found.end()):
+            continue                      # שנה ("מחירון 2026") ולא סכום
         if not any(abs(value - e) <= 1 for e in evidence):
             bad.append(token)
     return sorted(set(bad))
@@ -378,6 +384,37 @@ def rep_contact_is_backed(session_id: str, tool_log: list) -> bool:
     return db.has_open_questions(session_id)
 
 
+# טענה ש"נשמר/עודכן" - חייבת להיות מגובה בכלי שמירה שהצליח באותו תור (או בתלוש שנקלט בקוד לפני התור).
+# אחרת הבוט "שמר" בדיבור בלבד, והמצב חסר: הוא ישאל שוב וייתקע
+_SAVED_CLAIM_RE = re.compile(r"(?<![א-ת])(?:שמרתי|רשמתי|קלטתי|עדכנתי|נשמר|נשמרו|עודכן|עודכנו|נקלט|נקלטו)(?![א-ת])")
+_STATE_TOOLS = {"update_employee_data", "set_current_situation", "find_current_car", "verify_budget_and_eligibility",
+                "request_representative_info"}
+
+
+def claims_saved(text: str) -> bool:
+    return bool(_SAVED_CLAIM_RE.search(text))
+
+
+def saved_is_backed(tool_log: list, user_text: str | None) -> bool:
+    if (user_text or "").startswith("העליתי תלוש שכר"):
+        return True
+    return any(t["tool"] in _STATE_TOOLS and (t["output"] or {}).get("ok") for t in tool_log)
+
+
+# בקשה חריגה: המרת תקציב רכב שלא נוצל לכסף / פדיון / דמי ויתור. מדיניות החברה אוסרת (כלל 24), והסירוב חייב להופיע
+# בתשובה - לא להסתפק בהמשך שאלות. נבדק בקוד, כי המודל לפעמים מתעלם מהבקשה ועובר לשאלה הבאה
+# בקשה להמיר תקציב לכסף - לא כל שאלה שמכילה "כסף" ("כמה כסף אפסיד אם אעבור לחשמלי?" היא שאלה רגילה)
+_CASH_OUT_RE = re.compile(r"(?:פדיון|פדות|להמיר|המרה|מזומן|בכסף|לכסף|לקבל (?:את )?(?:ה)?כסף|תוספת שכר|שישולם לי).{0,50}(?:תקציב|רכב)|"
+                          r"תקציב.{0,60}(?:מזומן|בכסף|לכסף|פדיון|תוספת שכר|לשכר)|דמי ויתור")
+_REFUSAL_RE = re.compile(r"אינה? מאפשר|לא (?:ניתן|אפשר|אפשרי)|אי אפשר|אין אפשרות|אינו אפשרי|אינה אפשרית|"
+                         r"לא מתאפשר|לא קיימת אפשרות|מדיניות החברה")
+CASH_OUT_REFUSAL = ("מדיניות החברה אינה מאפשרת להמיר תקציב רכב שלא נוצל לכסף או לתוספת שכר, "
+                    "ולכן אין אפשרות כזו. תקציב שלא נוצל לא הופך לכסף בשכר.")
+CASH_OUT_HINT = ("[הודעת מערכת] העובד ביקש להמיר תקציב רכב שלא נוצל לכסף / פדיון / דמי ויתור. זו בקשה חריגה שמדיניות "
+                 "החברה אוסרת (כלל 24): פתח/י את התשובה בסירוב ברור ומנומס (בלי פנייה לנציג), הסבר/י שתקציב שלא נוצל לא "
+                 "הופך לכסף בשכר, ורק אחר כך המשך/י בשאלות או בשמירת הנתונים שמסר.")
+
+
 def chat(session_id: str, user_text: str | None = None, llm=None, on_step=None, on_status=None) -> dict:
     """תור אחד בשיחה: הודעת העובד -> (קריאות כלים) -> תשובת הבוט.
     בלי user_text: ממשיכים הודעה שכבר נשמרה ולא נענתה (ניסיון חוזר, בלי לשלוח אותה פעמיים).
@@ -404,6 +441,9 @@ def chat(session_id: str, user_text: str | None = None, llm=None, on_step=None, 
         history.append(ChatMessage(role=MessageRole.USER, content=note))
     tool_log = []
     reply = None
+    cash_out_request = bool(user_text and _CASH_OUT_RE.search(user_text))
+    if cash_out_request:
+        history.append(ChatMessage(role=MessageRole.USER, content=CASH_OUT_HINT))
 
     def status(text: str) -> None:
         if on_status:
@@ -413,6 +453,7 @@ def chat(session_id: str, user_text: str | None = None, llm=None, on_step=None, 
                 logger.exception("on_status נכשל")
 
     corrections_left = 1      # ניסיון תיקון אחד אם הסוכן המציא מספרים
+    save_corrections_left = 1  # ניסיון תיקון אחד אם הסוכן טען שנשמר משהו בלי להפעיל כלי
     for _ in range(MAX_TOOL_ROUNDS):
         # הפרומפט נבנה מחדש בכל סבב - כך הסוכן רואה את המצב אחרי כל כלי שהופעל
         chat_history = [_system_message(session_id)] + history
@@ -426,6 +467,22 @@ def chat(session_id: str, user_text: str | None = None, llm=None, on_step=None, 
             candidate = strip_time_claims(candidate)
             invented = unsupported_amounts(candidate, _evidence(session_id, messages, tool_log))
             rep_claim = claims_rep_contact(candidate) and not rep_contact_is_backed(session_id, tool_log)
+            if cash_out_request and not _REFUSAL_RE.search(candidate) and save_corrections_left > 0 \
+                    and not claims_rep_contact(candidate):
+                save_corrections_left -= 1                 # הסירוב חסר: מבקשים תיקון (אותו ניסיון תיקון יחיד)
+                history.append(response.message)
+                history.append(ChatMessage(role=MessageRole.USER, content=CASH_OUT_HINT))
+                continue
+            save_claim = claims_saved(candidate) and not saved_is_backed(tool_log, user_text)
+            if save_claim and not invented and not rep_claim and save_corrections_left > 0:
+                save_corrections_left -= 1
+                history.append(response.message)
+                history.append(ChatMessage(role=MessageRole.USER, content=(
+                    "[הודעת מערכת] כתבת שנתונים נשמרו או עודכנו, אבל בתור הזה לא הפעלת כלי שמירה שהצליח. "
+                    "אם העובד מסר נתונים - גם בתשובה קצרה כמו \"לא\", \"לא ולא\" או \"אין\" - מפה כל תשובה לשאלה שנשאלה "
+                    "(בונוס 0, מצב היום \"אין רכב\" וכו') והפעל עכשיו את הכלים (update_employee_data / set_current_situation). "
+                    "אם לא נמסר נתון חדש - נסח מחדש בלי לטעון שמשהו נשמר.")))
+                continue
             if not invented and not rep_claim:
                 reply = candidate
                 break
@@ -470,6 +527,8 @@ def chat(session_id: str, user_text: str | None = None, llm=None, on_step=None, 
                                        additional_kwargs={"tool_call_id": call.tool_id}))
     if reply is None:
         reply = "מצטער, לא הצלחתי להשלים את הבקשה. אפשר לנסח אותה שוב?"
+    if cash_out_request and not _REFUSAL_RE.search(reply):
+        reply = CASH_OUT_REFUSAL + "\n\n" + reply         # המודל התעלם גם אחרי תיקון: הסירוב נוסף בקוד
 
     messages.append({"role": "assistant", "content": reply,
                      "tools": [t["tool"] for t in tool_log]})

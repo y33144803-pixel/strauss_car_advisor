@@ -4,11 +4,12 @@
     {"ok": bool, "data": {...}, "error": str|None, "missing": [...], "next_step": str|None}
 התיאור שהסוכן רואה לכל כלי נמצא בנפרד ב-tool_specs.json.
 """
+import difflib
 import re
 from typing import Optional
 
 import db
-from calc_engine import MAX_CREDIT_POINTS, CarSituation, SalaryInput, compare, display_round
+from calc_engine import MAX_CREDIT_POINTS, MAX_MONTHLY_AMOUNT, CarSituation, SalaryInput, compare, display_round
 from data_store import find_car, find_car_by_name, find_occupation, get_catalog, get_occupations, get_rules
 from eligibility import (is_family_car, check_car_choice, check_waiver, family_employee_share,
                          group_budget, lookup_catalog_usage_value)
@@ -24,7 +25,8 @@ REP_FIELDS = {
     "new_participation": "השתתפות עובד ברכב החדש",
     "current_participation": "השתתפות עובד ברכב הנוכחי",
     "current_car_usage_value": "שווי שימוש של הרכב הנוכחי",
-    "waiver_maintenance": "אחזקת רכב בוויתור (עיסוק לא מופיע בטבלה)",
+    "waiver_maintenance": "אחזקת רכב בוויתור",
+    "eligibility_group": "קבוצת זכאות",
     "other": "אחר",
 }
 
@@ -35,7 +37,8 @@ def _display_name(make_name: str, commercial_name: str, year) -> str:
 
 
 # נתונים שהעובד אמור לדעת - קודם שואלים אותו, ורק אם אמר שאינו יודע פונים לנציג
-ASK_EMPLOYEE_FIRST = {"new_participation", "current_participation"}
+# רק נתון שהעובד אמור לדעת (מה הוא משלם היום) נשאל קודם. ההשתתפות ברכב החדש נקבעת בחברה: נשלחת לנציג מיד, בקוד
+ASK_EMPLOYEE_FIRST = {"current_participation"}
 
 
 def _result(ok: bool, data: dict | None = None, error: str | None = None,
@@ -57,6 +60,36 @@ def _cancel_pending(state: ConversationState, field: str) -> None:
 
 
 # ---------------------------------------------------------------- 1. עדכון נתונים
+
+_NUMBER_TOKEN = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(k|K|ק|אלף)?")
+
+
+def stated_numbers(session_id: str) -> set[float]:
+    """כל המספרים שהעובד כתב בשיחה (גם "12K" / "12 אלף" -> 12000, וגם "2,25" -> 2.25 ו-225)."""
+    found: set[float] = set()
+    for message in db.load_messages(session_id):
+        if message["role"] != "user":
+            continue
+        for raw, suffix in _NUMBER_TOKEN.findall(message["content"]):
+            candidates = {raw.replace(",", ""), raw.replace(",", ".")}
+            if re.fullmatch(r"\d{1,3}(?:[.,]\d{3})+", raw):
+                candidates.add(re.sub(r"[.,]", "", raw))                  # 1.000 / 14,200 = אלפים
+            for text in candidates:
+                try:
+                    number = float(text)
+                except ValueError:
+                    continue
+                found.add(number)
+                if suffix:
+                    found.add(number * 1000)
+    return found
+
+
+# שדות מספריים שהעובד מוסר: ערך שלא נאמר בשיחה לא נשמר (הגנה מפני מילוי "ברירות מחדל" שהמודל המציא). 0 תמיד מותר ("אין")
+_STATED_FIELDS = (("base_salary", "שכר הבסיס"), ("commissions", "העמלות"), ("bonus", "הבונוס"),
+                  ("pension_rate", "אחוז הפנסיה"), ("study_fund_rate", "אחוז קרן ההשתלמות"),
+                  ("credit_points", "נקודות הזיכוי"), ("current_participation", "ההשתתפות ברכב הנוכחי"),
+                  ("new_participation", "ההשתתפות ברכב החדש"))
 
 def update_employee_data(session_id: str,
                          eligibility_group: Optional[str] = None,
@@ -92,17 +125,22 @@ def update_employee_data(session_id: str,
             emp.group_source = "employee"
         else:
             errors.append(f"קבוצת זכאות '{eligibility_group}' אינה קיימת. הקבוצות: {', '.join(rules['groupOrder'])}")
+    too_big = f"גבוה מדי (עד {MAX_MONTHLY_AMOUNT:,.0f} ₪ בחודש) - כנראה טעות הקלדה, לבקש מהעובד לתקן"
     if base_salary is not None:
-        if base_salary > 0:
-            apply(emp, "base_salary", float(base_salary), "שכר בסיס")
-        else:
+        if base_salary <= 0:
             errors.append("שכר הבסיס חייב להיות מספר חיובי")
+        elif base_salary > MAX_MONTHLY_AMOUNT:
+            errors.append(f"שכר הבסיס {base_salary:,.0f} {too_big}")
+        else:
+            apply(emp, "base_salary", float(base_salary), "שכר בסיס")
     for value, field, label in ((commissions, "commissions", "עמלות"), (bonus, "bonus", "בונוס")):
         if value is not None:
-            if value >= 0:
-                apply(emp, field, float(value), label)
-            else:
+            if value < 0:
                 errors.append(f"{label} לא יכולים להיות שליליים")
+            elif value > MAX_MONTHLY_AMOUNT:
+                errors.append(f"{label} {value:,.0f} {too_big}")
+            else:
+                apply(emp, field, float(value), label)
     for value, field, label in ((pension_rate, "pension_rate", "אחוז פנסיה"),
                                 (study_fund_rate, "study_fund_rate", "אחוז קרן השתלמות")):
         if value is not None:
@@ -126,8 +164,10 @@ def update_employee_data(session_id: str,
                 apply(emp, "eligibility_group", occ["group"], "קבוצת זכאות (לפי העיסוק)")
                 emp.group_source = "occupation"
         else:
-            errors.append(f"העיסוק '{occupation}' לא נמצא בטבלת העיסוקים. העיסוקים המוכרים: {', '.join(names)}. "
-                          "יש לאשר עם העובד איזה מהם מתאים, ואם אף אחד - לפנות לנציג")
+            close = difflib.get_close_matches(occupation, names, n=3, cutoff=0.4)
+            hint = f" העיסוקים הקרובים ביותר: {', '.join(close)} - אפשר להציע לעובד אחד מהם לאישור." if close else ""
+            errors.append(f"העיסוק '{occupation}' לא נמצא בטבלת העיסוקים.{hint} אסור להציג לעובד את רשימת העיסוקים המלאה. "
+                          "אם אף עיסוק לא מתאים - לשאול את העובד לאיזו קבוצת זכאות הוא שייך, ואם הוא לא יודע - לפנות לנציג")
     # סתירה בין הקבוצה לעיסוק: לא דורסים בשקט אף צד, אלא מחזירים חיווי לסוכן (עד שהעובד מבהיר)
     occ_record = find_occupation(emp.occupation) if emp.occupation else None
     if occ_record and emp.eligibility_group and occ_record["group"] != emp.eligibility_group:
@@ -195,6 +235,19 @@ def update_employee_data(session_id: str,
     if group_note:
         next_step = "הצף לעובד את הסתירה בין הקבוצה לעיסוק (data.group_conflict) לפני שממשיכים. " + next_step
     return _result(True, data, missing=missing, next_step=next_step)
+
+
+def drop_unstated(session_id: str, values: dict) -> tuple[dict, list[str]]:
+    """בקריאה של המודל לעדכון נתונים: מסיר ערכים מספריים שהעובד לא כתב בשיחה. מחזיר (ערכים תקינים, שגיאות)."""
+    said = stated_numbers(session_id)
+    clean, errors = dict(values), []
+    for field, label in _STATED_FIELDS:
+        value = clean.get(field)
+        if value is not None and value != 0 and not any(abs(value - n) < 1e-9 for n in said):
+            clean.pop(field)
+            errors.append(f"{label} ({value:g}) לא נאמר על ידי העובד בשיחה, ולכן לא נשמר. "
+                          "שאל את העובד, ושמור רק מספרים שהוא כתב")
+    return clean, errors
 
 
 # ---------------------------------------------------------------- 2. זיהוי הרכב הנוכחי
@@ -498,9 +551,21 @@ def verify_budget_and_eligibility(session_id: str, choice: str) -> dict:
         data["electric_refund"] = f"{get_rules()['electric']['netBonus']} ₪ נטו בחודש (החזר חשמל)"
     if recalculated:
         data["comparison"] = recalculated
-    step = ("שאל את העובד אם ידוע לו סכום ההשתתפות שלו ברכב החדש. רק אם ענה שהוא לא יודע - הפעל "
-            "request_representative_info עם new_participation ו-employee_confirmed_unknown=true"
-            if target.participation is None else "אם אין נתונים חסרים - הפעל calculate_net_salary")
+    step = "אם אין נתונים חסרים - הפעל calculate_net_salary"
+    if target.participation is None:
+        # ההשתתפות ברכב החדש נקבעת בחברה - העובד לא אמור לדעת אותה, ולכן הפנייה לנציג נפתחת מיד, בקוד,
+        # בלי לשאול את העובד (שמא ינחש). אם העובד מוסר סכום בעצמו - השאלה מתבטלת
+        opened = request_representative_info(session_id, "new_participation", f"השתתפות העובד ב-{target.label}", False)
+        if opened["ok"]:
+            state = db.load_state(session_id)          # הפנייה עדכנה את המצב במסד: העותק המקומי ישן
+            data["representative_question_sent"] = True
+            if "provisional_comparison" in opened["data"]:
+                data["comparison"] = opened["data"]["provisional_comparison"]
+            step = ("הודע לעובד שהשתתפותו ברכב החדש נקבעת בחברה ושכבר שלחת שאלה לנציג התחבורה (הפנייה נפתחה אוטומטית; "
+                    "אל תשאל אותו אם הוא יודע את הסכום). "
+                    + ("הצג את השוואת הביניים וציין שהיא זמנית ותתעדכן כשתגיע תשובה" if "comparison" in data
+                       else "החישוב ימשיך כשתגיע תשובה, ובינתיים השלם את הנתונים החסרים"))
+            return _result(True, data, missing=state.missing_required_fields(), next_step=step)
     return _result(True, data, missing=state.missing_required_fields(),
                    next_step=RECALCULATED_STEP if recalculated else step)
 
@@ -642,7 +707,7 @@ def calculate_net_salary(session_id: str) -> dict:
 
 _UNKNOWN_RE = re.compile(
     r"לא יודע|לא יודעת|אינני יודע|אינני יודעת|אין לי מושג|לא ידוע|לא זוכר|לא זוכרת|לא בטוח|לא בטוחה|"
-    r"אין לי מידע|אין לי את הנתון|לא מכיר|נציג|תשאל|תשאלי|תברר|תבררי|תבדוק|תבדקי|תפנה|תפני|"
+    r"אין לי מידע|אין לי את הנתון|לא מכיר|תשאל|תשאלי|תברר|תבררי|תבדוק|תבדקי|תפנה|תפני|"
     r"^\s*(?:לא|אין|לא ממש|אין לי)[\s.!?]*$")
 
 
@@ -731,6 +796,12 @@ def apply_representative_answers(session_id: str) -> list[dict]:
             db.save_state(state)
             verify_budget_and_eligibility(session_id, asked_about)
             state = db.load_state(session_id)
+        if field == "eligibility_group":                      # התשובה היא אות קבוצה (בהערה), לא סכום
+            letter = (q["answer_note"] or "").strip().replace("'", "").replace("׳", "")
+            if letter in get_rules()["groupOrder"]:
+                state.employee.eligibility_group = letter
+                state.employee.group_source = "representative"
+                state.employee.group_conflict = None
         if value is not None:
             if field == "new_participation" and state.target.kind == "car":
                 state.target.participation = float(value)

@@ -249,7 +249,7 @@ def test_session_title_is_professional_and_follows_the_topic():
     state.target.kind, state.target.label = "car", "BYD ATTO 3"
     db.save_state(state)
     title = db.list_user_sessions("dana")[0]["title"]
-    assert title.startswith("השוואה ל-BYD ATTO 3 · ") and "אני רוצה" not in title
+    assert title.startswith("מעבר ל-BYD ATTO 3 · ") and "אני רוצה" not in title
     state.target.kind, state.target.label = "waiver", None
     db.save_state(state)
     assert db.list_user_sessions("dana")[0]["title"].startswith("ויתור על רכב · ")
