@@ -6,7 +6,7 @@ import streamlit as st
 import auth
 import db
 from agent_tools import REP_FIELDS
-from ui import avatar_for, fix_bidi, require_role, user_avatar_css
+from ui import avatar_for, card_title, fix_bidi, page_header, require_role, user_avatar_css
 
 SORTS = {"עודכנו לאחרונה (מהחדש לישן)": ("updated_at", True), "עודכנו לאחרונה (מהישן לחדש)": ("updated_at", False),
          "נפתחו (מהחדש לישן)": ("created_at", True), "מספר הודעות (מהרב למעט)": ("messages", True),
@@ -31,12 +31,13 @@ def when(value: str) -> str:
 
 
 user = require_role("admin")
-st.subheader("מסך ניהול")
-st.markdown("<style>[class*='st-key-sessrow_new_'] { background: #FFF3CD; border-radius: 10px; padding: 6px 10px; }"
-            "[class*='st-key-sessrow_seen_'] { background: #F3F3F7; border-radius: 10px; padding: 6px 10px; }</style>",
-            unsafe_allow_html=True)
+page_header("מסך ניהול", "כל השיחות, הנציגים והמשתמשים במקום אחד", "🛠️")
+st.markdown("<style>[class*='st-key-sessrow_new_'] { background: #F4E9FB; border-radius: 12px; padding: 6px 12px;"
+            " border-inline-start: 5px solid var(--primary); box-shadow: 0 2px 8px rgba(124,58,168,.10); }"
+            "[class*='st-key-sessrow_seen_'] { background: #fff; border: 1px solid var(--line); border-radius: 12px;"
+            " padding: 6px 12px; }</style>", unsafe_allow_html=True)
 
-tab_sessions, tab_users = st.tabs(["שיחות", "משתמשים"])
+tab_sessions, tab_users = st.tabs(["שיחות", "משתמשים"], key="admin_tab", on_change="rerun")   # הלשונית נשמרת אחרי פעולה
 
 def open_session(session_id: str) -> None:
     """callback של כפתור "צפייה": פותח את השיחה ורושם שהמנהל צפה בה."""
@@ -62,16 +63,18 @@ with tab_sessions:
         first_day = min(item["updated_at"][:10] for item in sessions)
         owners = sorted({item["username"] for item in sessions})
         reps = sorted({r for item in sessions for r in item["reps"]})
-        top = st.columns(3)
-        picked_owners = top[0].multiselect("משתמשים", owners, placeholder="כל המשתמשים", key="admin_f_owners")
-        rep_filter = top[1].selectbox("שיחה עם נציג", REP_FILTERS, key="admin_f_rep")
-        picked_reps = top[2].multiselect("נציג שענה", reps, format_func=lambda r: names.get(r, r),
-                                         placeholder="כל הנציגים", key="admin_f_reps")
-        bottom = st.columns(3)
-        period = bottom[0].date_input("טווח תאריכים (עדכון אחרון)",
-                                      value=(date.fromisoformat(first_day), datetime.now().date()), key="admin_f_dates")
-        view_filter = bottom[1].selectbox("מצב צפייה", ["הכול", "טרם נצפו", "נצפו"], key="admin_f_viewed")
-        sort_by = bottom[2].selectbox("מיון", list(SORTS), key="admin_f_sort")
+        with st.container(key="card-filters"):
+            card_title("סינון ומיון", "🔎")
+            top = st.columns(3)
+            picked_owners = top[0].multiselect("משתמשים", owners, placeholder="כל המשתמשים", key="admin_f_owners")
+            rep_filter = top[1].selectbox("שיחה עם נציג", REP_FILTERS, key="admin_f_rep")
+            picked_reps = top[2].multiselect("נציג שענה", reps, format_func=lambda r: names.get(r, r),
+                                             placeholder="כל הנציגים", key="admin_f_reps")
+            bottom = st.columns(3)
+            period = bottom[0].date_input("טווח תאריכים (עדכון אחרון)",
+                                          value=(date.fromisoformat(first_day), datetime.now().date()), key="admin_f_dates")
+            view_filter = bottom[1].selectbox("מצב צפייה", ["הכול", "טרם נצפו", "נצפו"], key="admin_f_viewed")
+            sort_by = bottom[2].selectbox("מיון", list(SORTS), key="admin_f_sort")
 
         shown = sessions
         if picked_owners:
@@ -136,7 +139,7 @@ with tab_sessions:
                         row[5].write(str(item["messages"]))
                         row[6].write(item["title"])
                         if not item["viewed_at"]:
-                            row[7].markdown("**טרם נצפתה**")
+                            row[7].markdown(":violet[**● טרם נצפתה**]")
                         else:
                             by = names.get(item["viewed_by"], item["viewed_by"] or "")
                             note = " · **עודכנה מאז**" if fresh else ""
@@ -151,10 +154,12 @@ with tab_users:
     if notice:
         st.success(notice)
     users = db.list_users()
-    st.dataframe(
-        [{"שם משתמש": u["username"], "שם תצוגה": u["display_name"], "תפקיד": auth.ROLE_LABELS.get(u["role"], u["role"]),
-          "שיחות": u["sessions"], "נוצר": u["created_at"][:10]} for u in users],
-        hide_index=True, use_container_width=True)
+    with st.container(key="card-users"):
+        card_title(f"משתמשים ({len(users)})", "👥")
+        st.dataframe(
+            [{"שם משתמש": u["username"], "שם תצוגה": u["display_name"], "תפקיד": auth.ROLE_LABELS.get(u["role"], u["role"]),
+              "שיחות": u["sessions"], "נוצר": u["created_at"][:10]} for u in users],
+            hide_index=True, use_container_width=True)
 
     st.session_state.setdefault("admin_form", None)      # None / "add" / "reset" / "delete": טופס אחד פתוח, רק אחרי לחיצה
     add_col, reset_col, delete_col, _ = st.columns([1, 1, 1, 2])
@@ -223,7 +228,9 @@ with tab_users:
         st.download_button("הורדת גיבוי משתמשים", data=auth.export_users_json(), file_name="users_backup.json",
                            mime="application/json", key="admin_backup_download")
         uploaded = st.file_uploader("שחזור מקובץ גיבוי", type="json", key="admin_backup_upload")
-        if uploaded is not None and st.button("טעינת הגיבוי", key="admin_backup_load"):
+        # הגיבוי נטען מיד עם ההעלאה (בלי כפתור נוסף), פעם אחת לכל קובץ שהועלה
+        if uploaded is not None and st.session_state.get("admin_backup_loaded") != uploaded.file_id:
+            st.session_state["admin_backup_loaded"] = uploaded.file_id
             try:
                 added = auth.import_users_json(uploaded.getvalue().decode("utf-8"))
             except (auth.LoginError, UnicodeDecodeError) as error:

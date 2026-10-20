@@ -545,7 +545,9 @@ def test_sidebar_has_new_chat_and_history_only(auth_on):
     at = logged_in_dana()
     sidebar_labels = [b.label for b in at.sidebar.button]
     assert "שיחה חדשה" in sidebar_labels
-    assert "מעבר לרכב חשמלי" in sidebar_labels and "מה אם אוותר על הרכב" in sidebar_labels
+    sidebar_keys = [b.key for b in at.sidebar.button]
+    assert "open_h1" in sidebar_keys and "open_h2" in sidebar_keys                   # שתי שיחות קודמות בהיסטוריה
+    assert [t.label for t in at.sidebar.toggle] == ["הצג את הנתונים שנקלטו בצד"]     # מתג הנתונים בסרגל הצד, מתחת ל"שיחה חדשה"
     assert "הגדרות" not in sidebar_labels and "יציאה" not in sidebar_labels      # עברו לתפריט בבאנר
     assert not any("הנתונים שנקלטו עד כה" in m.value for m in at.sidebar.markdown)   # הנתונים כבר לא בסרגל הצד
 
@@ -720,3 +722,9 @@ def test_password_change_signs_out_other_devices_but_keeps_this_one(account_user
     next(b for b in at.button if b.label == "עדכון סיסמה").click().run()
     assert db.user_for_token(other_device) is None                    # מכשיר אחר נותק
     assert db.user_for_token(at.session_state["auth_token"])["username"] == "dana"      # וזה נשאר מחובר
+
+
+def test_sidebar_stays_while_the_consent_card_is_shown(auth_on):
+    at = app_with_login("dana", "secret-1", consent=False)
+    assert any(b.key == "consent_button" for b in at.button) and not at.chat_input
+    assert "new_chat_button" in [b.key for b in at.sidebar.button]          # הסרגל לא נעלם בזמן האישור

@@ -1,14 +1,15 @@
 """מסך נציג: שאלות פתוחות מהבוט, והזנת התשובה. השיחה של העובד ממשיכה אוטומטית."""
+import html
 from datetime import datetime
 
 import streamlit as st
 
 import db
 from agent_tools import REP_FIELDS
-from ui import require_role
+from ui import badge, page_header, require_role
 
 rep_user = require_role("rep")          # רק נציגים (התחברות עם שם משתמש וסיסמה)
-st.subheader("מסך נציג תחבורה")
+page_header("מסך נציג תחבורה", "שאלות שהבוט לא יכול להשלים לבד. התשובה שלך חוזרת לשיחה של העובד מיד.", "🧑‍💼")
 
 
 @st.fragment(run_every=5)
@@ -16,14 +17,18 @@ def open_questions() -> None:
     questions = db.list_questions("open")
     st.subheader(f"שאלות פתוחות ({len(questions)})")
     if not questions:
-        st.caption("אין שאלות פתוחות כרגע. המסך מתרענן אוטומטית.")
+        st.markdown("<div class='empty-card'><div class='big'>✅</div>אין שאלות פתוחות כרגע. המסך מתרענן אוטומטית.</div>",
+                    unsafe_allow_html=True)
     for q in questions:
-        title = f"#{q['id']} · {REP_FIELDS.get(q['missing_field'], q['missing_field'])} · שיחה {q['session_id']}"
-        with st.expander(title, expanded=True):
-            st.markdown(f"**פנייה:** {q['context_message']}")
-            if q["employee_summary"]:
-                st.caption(q["employee_summary"])
-            st.caption(f"נשלח: {datetime.fromisoformat(q['created_at']).strftime('%d/%m/%Y %H:%M')}")
+        field = REP_FIELDS.get(q["missing_field"], q["missing_field"])
+        sent = datetime.fromisoformat(q["created_at"]).strftime("%d/%m/%Y %H:%M")
+        with st.container(key=f"card-q-{q['id']}"):
+            st.markdown(
+                f"<div class='q-head'>{badge('#' + str(q['id']), 'purple')}<span class='q-title'>{html.escape(field)}</span>"
+                f"<span class='q-session'>שיחה {html.escape(q['session_id'])} · נשלח {sent}</span></div>"
+                f"<div class='quote'><b>פנייה:</b> {html.escape(q['context_message'])}</div>"
+                + (f"<div class='q-chips'>{html.escape(q['employee_summary'])}</div>" if q["employee_summary"] else ""),
+                unsafe_allow_html=True)
             free_text = q["missing_field"] == "other"      # תשובה חופשית - אין סכום חובה
             with st.form(f"answer_{q['id']}"):
                 # value=None: שדה ריק. בלי זה ברירת המחדל 0 הייתה נשמרת בטעות כהשתתפות של 0 ₪
@@ -50,9 +55,14 @@ with st.expander("שאלות שנענו"):
     if not answered:
         st.caption("עדיין אין.")
     for q in answered:
-        when = f", בתוקף מ-{q['effective_from']}" if q["effective_from"] else ""
-        state = "נקלט בשיחה" if q["status"] == "applied" else "ממתין לקליטה בשיחה"
+        when = f"בתוקף מ-{q['effective_from']}" if q["effective_from"] else ""
+        applied = q["status"] == "applied"
         answer = f"{q['answer_value']:,.0f} ₪" if q["answer_value"] is not None else (q["answer_note"] or "-")
-        st.markdown(f"- #{q['id']} · {REP_FIELDS.get(q['missing_field'], q['missing_field'])} · "
-                    f"{answer}{when} · שיחה {q['session_id']} · {state}"
-                    + (f" · ענה/תה: {q['answered_by']}" if q.get("answered_by") else ""))
+        by = f"ענה/תה: {q['answered_by']}" if q.get("answered_by") else ""
+        meta = " · ".join(x for x in (when, f"שיחה {q['session_id']}", by) if x)
+        st.markdown(
+            f"<div class='ans-row'>{badge('#' + str(q['id']), 'gray')}"
+            f"<span class='ans-main'>{html.escape(REP_FIELDS.get(q['missing_field'], q['missing_field']))}: {html.escape(answer)}</span>"
+            f"{badge('נקלט בשיחה' if applied else 'ממתין לקליטה', 'green' if applied else 'amber')}"
+            f"<span class='ans-meta'>{html.escape(meta)}</span></div>",
+            unsafe_allow_html=True)

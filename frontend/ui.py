@@ -96,6 +96,24 @@ def fix_bidi(text: str) -> str:
     return _AMOUNT_RE.sub(lambda m: m.group(1) or "⁦" + m.group(2) + "⁩", text)
 
 
+def page_header(title: str, subtitle: str = "", icon: str = "") -> None:
+    """כותרת מסך אחידה (אייקון בריבוע צבעוני, כותרת ושורת הסבר) - לאזור האישי, מסך הנציג ומסך הניהול."""
+    icon_html = f"<div class='ph-icon'>{html.escape(icon)}</div>" if icon else ""
+    sub_html = f"<div class='ph-sub'>{html.escape(subtitle)}</div>" if subtitle else ""
+    st.markdown(f"<div class='page-head'>{icon_html}<div><div class='ph-title'>{html.escape(title)}</div>{sub_html}</div></div>",
+                unsafe_allow_html=True)
+
+
+def card_title(text: str, icon: str = "") -> None:
+    ico = f"<span class='ct-ico'>{html.escape(icon)}</span>" if icon else ""
+    st.markdown(f"<div class='card-title'>{ico}{html.escape(text)}</div>", unsafe_allow_html=True)
+
+
+def badge(text: str, kind: str = "purple") -> str:
+    """תגית קטנה כ-HTML (להכנסה בתוך markdown עם unsafe_allow_html)."""
+    return f"<span class='badge {kind}'>{html.escape(text)}</span>"
+
+
 def show_markdown(text: str) -> None:
     st.markdown(fix_bidi(text))
 
@@ -207,6 +225,12 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 /* פאנל הצד: "הנתונים שנקלטו עד כה" */
 [data-testid="stSidebarContent"] { padding-top: 6.4rem; }
 [data-testid="stSidebarHeader"] { display: none; }
+/* כפתור צף לפתיחת הסרגל (נוצר ב-JS): מופיע רק כשהסרגל סגור. הכפתור המקורי של Streamlit נמצא בתוך ה-header המוסתר */
+#open-sidebar-fab { position: fixed; right: 18px; bottom: 18px; z-index: 1000010; width: 54px; height: 54px; border-radius: 50%;
+    border: 0; background: var(--primary); color: #fff; font-size: 1.6rem; cursor: pointer; display: none;
+    align-items: center; justify-content: center; box-shadow: 0 8px 20px rgba(124,58,168,.45); }
+/* סרגל סגור: מסתירים את התוכן שלו לגמרי (אחרת נשארים שרידים של הכפתורים באמצע המסך) */
+[data-testid="stSidebar"][aria-expanded="false"] { visibility: hidden; }
 .state-card { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: #fff; direction: rtl; }
 .state-card .state-title { font-weight: 700; color: var(--primary); margin-bottom: 4px; }
 .state-row { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0;
@@ -255,6 +279,43 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 .cmp-note { font-size:.85rem; color:var(--muted); margin:8px 0; }
 .empty-card { border:2px dashed var(--line); border-radius:14px; padding:28px 18px; text-align:center; color:var(--muted); }
 .empty-card .big { font-size:2.2rem; }
+
+/* ---- כותרות מסך, כרטיסים ותגיות (מסך עובד לא משתמש בהם; אזור אישי, נציג ומנהל כן) ---- */
+.page-head { display:flex; align-items:center; gap:14px; margin:2px 0 18px; direction:rtl; }
+.page-head .ph-icon { width:48px; height:48px; border-radius:15px; flex:none; display:flex; align-items:center;
+                      justify-content:center; font-size:1.55rem; color:#fff;
+                      background:linear-gradient(135deg, var(--accent), var(--primary)); box-shadow:0 8px 18px rgba(124,58,168,.28); }
+.page-head .ph-title { font-size:1.65rem; font-weight:800; color:var(--ink); line-height:1.15; }
+.page-head .ph-sub { color:var(--muted); font-size:.95rem; margin-top:3px; }
+[class*="st-key-card-"] { background:#fff; border:1px solid var(--line); border-radius:18px; padding:20px 22px;
+                          box-shadow:0 6px 20px rgba(43,37,64,.06); margin-bottom:16px; }
+.card-title { display:flex; align-items:center; gap:8px; font-weight:800; font-size:1.08rem; color:var(--primary); margin:0 0 10px; }
+.card-title .ct-ico { font-size:1.2rem; }
+.badge { display:inline-block; padding:2px 12px; border-radius:999px; font-size:.8rem; font-weight:700; white-space:nowrap; }
+.badge.purple { background:#EFE3F7; color:var(--primary); } .badge.green { background:#E3F4EB; color:var(--good); }
+.badge.amber { background:#FFF1CC; color:#8A6100; } .badge.gray { background:#ECECF1; color:#555; }
+.badge.pink { background:#FBE3F0; color:var(--accent); }
+.profile { display:flex; align-items:center; gap:20px; direction:rtl; }
+.profile .avatar { width:84px; height:84px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center;
+                   font-size:2.3rem; font-weight:800; color:#fff; background:linear-gradient(135deg, var(--accent), var(--primary));
+                   box-shadow:0 10px 24px rgba(124,58,168,.32); border:4px solid #fff; outline:2px solid #EFE3F7; }
+.profile .pname { font-size:1.5rem; font-weight:800; color:var(--ink); line-height:1.2; }
+.profile .pmeta { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:6px; color:var(--muted); }
+.profile .pmeta b { color:var(--ink); direction:ltr; unicode-bidi:plaintext; }
+.q-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px; direction:rtl; }
+.q-title { font-weight:800; font-size:1.08rem; color:var(--ink); }
+.q-session { color:var(--muted); font-size:.85rem; margin-inline-start:auto; }
+.quote { border-inline-start:5px solid var(--accent); background:var(--soft); border-radius:12px; padding:10px 14px; margin:8px 0; direction:rtl; }
+.q-chips { color:var(--muted); font-size:.85rem; margin:6px 0 10px; direction:rtl; }
+.ans-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 4px; border-bottom:1px solid var(--line); direction:rtl; }
+.ans-row:last-child { border-bottom:0; }
+.ans-row .ans-main { font-weight:700; }
+.ans-row .ans-meta { color:var(--muted); font-size:.85rem; margin-inline-start:auto; }
+[data-testid="stForm"] { border-radius:16px; border:1px solid var(--line); background:#FCFAFE; }
+[data-testid="stTabs"] [role="tab"] { font-weight:700; padding:.55rem 1.1rem; font-size:1rem; }
+[data-testid="stExpander"] { border-radius:14px; border:1px solid var(--line); background:#fff; }
+.st-key-consent-card { background:#fff; border-radius:18px !important; padding:24px 24px 18px !important;
+                       box-shadow:0 10px 28px rgba(43,37,64,.08); border-top:5px solid var(--primary) !important; }
 </style>
 """
 
@@ -266,6 +327,28 @@ const doc = window.parent.document;
 if (!window.parent.__bfReload) {
   window.parent.__bfReload = true;
   window.parent.addEventListener('pageshow', e => { if (e.persisted) window.parent.location.reload(); });
+}
+// הסרגל נסגר (למשל כשהחלון הצטמצם) ו-Streamlit זוכר את זה גם אחרי רענון. במסך רחב פותחים אותו מחדש אוטומטית;
+// במסך צר מופיע כפתור צף לפתיחתו (הכפתור המקורי של Streamlit נמצא ב-header שמוסתר אצלנו)
+if (!window.parent.__sidebarGuard) {
+  const expand = () => {
+    const btn = doc.querySelector('[data-testid="stExpandSidebarButton"]');
+    if (btn) (btn.querySelector('button') || btn).click();
+  };
+  let fab = doc.getElementById('open-sidebar-fab');
+  if (!fab) {
+    fab = doc.createElement('button');
+    fab.id = 'open-sidebar-fab'; fab.textContent = '☰'; fab.title = 'פתיחת התפריט';
+    fab.onclick = expand;
+    doc.body.appendChild(fab);
+  }
+  window.parent.__sidebarGuard = setInterval(() => {
+    const sb = doc.querySelector('[data-testid="stSidebar"]');
+    const present = sb && getComputedStyle(sb).display !== 'none';
+    const collapsed = present && sb.getAttribute('aria-expanded') === 'false';
+    if (collapsed && window.parent.innerWidth >= 900) expand();
+    fab.style.display = collapsed && window.parent.innerWidth < 900 ? 'flex' : 'none';
+  }, 800);
 }
 if (!doc.__copyButtons) {
   doc.__copyButtons = true;
@@ -614,7 +697,7 @@ def _open_session(session_id: str) -> None:
     st.rerun()
 
 
-def render_history_sidebar(current_sid: str | None) -> None:
+def render_history_sidebar(current_sid: str | None, show_data_toggle: bool = False) -> None:
     """סרגל הצד של העובד, כמו בצ'אט מוכר: שיחה חדשה, והיסטוריית השיחות - פתיחה, שינוי שם ומחיקה (עם אישור)."""
     import db
     owner = _owner_for_sessions()
@@ -622,6 +705,8 @@ def render_history_sidebar(current_sid: str | None) -> None:
         if st.button("שיחה חדשה", icon=":material/add:", key="new_chat_button", use_container_width=True):
             new_session()
             _open_session(st.session_state["sid"])
+        if show_data_toggle:                       # מתג "הנתונים שנקלטו" - מתחת לכפתור "שיחה חדשה"
+            st.toggle("הצג את הנתונים שנקלטו בצד", key="show_data")
         if not owner:                              # התחברות כבויה (פיתוח מקומי): אין היסטוריה אישית
             return
         pending = st.session_state.get("confirm_delete")

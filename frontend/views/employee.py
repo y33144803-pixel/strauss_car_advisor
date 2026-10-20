@@ -14,19 +14,20 @@ from ui import (CLOSE_PICKER, avatar_for, get_session_id, render_car_picker, ren
 require_role("employee")                # רק עובדים (או התחברות כבויה בפיתוח מקומי)
 logger = logging.getLogger("strauss.employee")
 sid = get_session_id()
-require_consent(sid)                    # אישור שמירת השיחות: בכל שיחה חדשה, אלא אם סימנו "אל תזכירו שוב"
 CHAT_HEIGHT = 480
 CHAT_HEIGHT_WITH_PICKER = 250
 
 st.session_state.setdefault("picker_nonce", 0)
 
-render_history_sidebar(sid)             # שיחה חדשה + היסטוריית שיחות בסרגל הצד
+st.session_state.setdefault("show_comparison", False)
+st.session_state.setdefault("show_data", False)
+render_history_sidebar(sid, show_data_toggle=True)    # שיחה חדשה + מתג הנתונים + היסטוריית שיחות בסרגל הצד
+# האישור אחרי הסרגל: בזמן שמוצג כרטיס האישור הסרגל (שיחה חדשה, היסטוריה) נשאר במקומו ולא נעלם
+require_consent(sid)                    # אישור שמירת השיחות: בכל שיחה חדשה, אלא אם סימנו "אל תזכירו שוב"
 
 # בצד (עמודה שמאלית), לפי בקשת העובד: "הנתונים שנקלטו" ו/או ההשוואה המפורטת. אחרת כל המסך הוא שיחה.
 # המתגים עצמם מופיעים בשיחה (המתג של ההשוואה - מתחת להודעת ההשוואה האחרונה)
 initial_state = db.load_state(sid)
-st.session_state.setdefault("show_comparison", False)
-st.session_state.setdefault("show_data", False)
 show_comparison = bool(initial_state.last_result and st.session_state["show_comparison"])
 show_data = bool(st.session_state["show_data"])
 side_open = show_comparison or show_data
@@ -100,9 +101,12 @@ with chat_col:
     # או כשהעובד (כפתור "בחירת רכב אחר") / הסוכן (הכלי show_catalog) ביקשו לבחור רכב
     picked_text = None
     if picker_open:
-        choice = render_car_picker(picker, st.session_state["picker_nonce"])
+        picker_slot = st.empty()                  # בלחיצה על רכב הבורר נעלם מיד, לא רק אחרי שהבוט עונה
+        with picker_slot.container():
+            choice = render_car_picker(picker, st.session_state["picker_nonce"])
         if choice:
             st.session_state["picker_nonce"] += 1
+            picker_slot.empty()
             if choice == CLOSE_PICKER:
                 set_picker(sid, False)
                 st.rerun()
@@ -138,7 +142,6 @@ with chat_box:
         st.warning(st.session_state.get("chat_error") or "ההודעה האחרונה שלך עדיין לא נענתה.")
         if st.button("נסי שוב", type="primary"):
             run_turn(None)
-    st.toggle("הצג את הנתונים שנקלטו בצד", key="show_data")
 
 state = db.load_state(sid)
 with chat_box:

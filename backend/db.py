@@ -81,6 +81,14 @@ def _init_schema() -> None:
                 first_user, count = _summary(json.loads(row["messages_json"]))
                 conn.execute("UPDATE sessions SET first_user = ?, user_messages = ? WHERE session_id = ?",
                              (first_user, count, row["session_id"]))
+        if "topic" not in columns:                     # נושא השיחה לפי מצב השיחה (שם מקצועי בהיסטוריה)
+            conn.execute("ALTER TABLE sessions ADD COLUMN topic TEXT")
+            for row in conn.execute("SELECT session_id, state_json FROM sessions").fetchall():
+                try:
+                    topic = _topic(ConversationState.model_validate_json(row["state_json"]))
+                except ValueError:
+                    topic = None
+                conn.execute("UPDATE sessions SET topic = ? WHERE session_id = ?", (topic, row["session_id"]))
         if "admin_viewed_at" not in columns:           # מתי מנהל צפה בשיחה לאחרונה, ומי
             conn.execute("ALTER TABLE sessions ADD COLUMN admin_viewed_at TEXT")
             conn.execute("ALTER TABLE sessions ADD COLUMN admin_viewed_by TEXT")
@@ -117,13 +125,35 @@ def load_state(session_id: str) -> ConversationState:
     return ConversationState.model_validate_json(row["state_json"])
 
 
+def _topic(state: ConversationState) -> str | None:
+    """נושא השיחה לפי מה שהעובד ביקש לבדוק: ויתור על רכב, או השוואה לרכב מסוים. עוד לא ידוע - None."""
+    target = state.target
+    if target.kind == "waiver":
+        return "ויתור על רכב"
+    if target.kind == "car" and target.label:
+        return f"השוואה ל-{target.label}"
+    return None
+
+
+def display_title(custom: str | None, topic: str | None, created_at: str) -> str:
+    """שם השיחה בהיסטוריה: שם שהמשתמש נתן, ואחרת נושא + תאריך (יום/חודש), ואם עוד אין נושא - "בדיקת נטו" + תאריך ושעה."""
+    custom = (custom or "").strip()
+    if custom:
+        return custom
+    created = datetime.fromisoformat(created_at)
+    if topic:
+        return f"{topic} · {created:%d/%m}"
+    return f"בדיקת נטו · {created:%d/%m %H:%M}"
+
+
 def save_state(state: ConversationState) -> None:
     init_db()
     with closing(_connect()) as conn, conn:
         conn.execute("""
-            INSERT INTO sessions (session_id, state_json, created_at, updated_at) VALUES (?, ?, ?, ?)
-            ON CONFLICT(session_id) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at
-        """, (state.session_id, state.model_dump_json(), _now(), _now()))
+            INSERT INTO sessions (session_id, state_json, created_at, updated_at, topic) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(session_id) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at,
+                                                  topic = excluded.topic
+        """, (state.session_id, state.model_dump_json(), _now(), _now(), _topic(state)))
 
 
 def load_messages(session_id: str) -> list[dict]:
@@ -351,11 +381,11 @@ def list_user_sessions(username: str) -> list[dict]:
     """היסטוריית השיחות של משתמש, מהאחרונה לראשונה. שיחה בלי הודעות של העובד (רק פתיחה) לא נכללת."""
     init_db()
     with closing(_connect()) as conn:
-        rows = conn.execute("""SELECT session_id, created_at, updated_at, title, first_user, user_messages
+        rows = conn.execute("""SELECT session_id, created_at, updated_at, title, topic, first_user, user_messages
                                FROM sessions WHERE username = ? AND first_user IS NOT NULL
                                ORDER BY updated_at DESC""", (username,)).fetchall()
     return [{"session_id": row["session_id"], "created_at": row["created_at"], "updated_at": row["updated_at"],
-             "preview": row["first_user"][:80], "title": (row["title"] or "").strip() or row["first_user"][:40],
+             "preview": row["first_user"][:80], "title": display_title(row["title"], row["topic"], row["created_at"]),
              "messages": row["user_messages"] or 0} for row in rows]
 
 
@@ -373,7 +403,7 @@ def list_all_sessions() -> list[dict]:
     אילו נציגים ענו (reps - שמות משתמש); ומתי ועל ידי מי נצפתה לאחרונה (viewed_at / viewed_by)."""
     init_db()
     with closing(_connect()) as conn:
-        rows = conn.execute("""SELECT s.session_id, s.username, s.first_user, s.user_messages, s.created_at, s.updated_at, s.title,
+        rows = conn.execute("""SELECT s.session_id, s.username, s.first_user, s.user_messages, s.created_at, s.updated_at, s.title, s.topic,
                                       s.admin_viewed_at, s.admin_viewed_by, u.display_name,
                                       (SELECT COUNT(*) FROM rep_questions q WHERE q.session_id = s.session_id
                                          AND q.status != 'cancelled') AS rep_total,
@@ -391,7 +421,7 @@ def list_all_sessions() -> list[dict]:
         sessions.append({"session_id": row["session_id"], "username": row["username"] or "(ללא משתמש)",
                          "display_name": row["display_name"] or row["username"] or "?",
                          "created_at": row["created_at"], "updated_at": row["updated_at"],
-                         "title": (row["title"] or "").strip() or first_user[:40],
+                         "title": display_title(row["title"], row["topic"], row["created_at"]),
                          "messages": row["user_messages"] or 0,
                          "rep_total": row["rep_total"], "rep_open": row["rep_open"],
                          "reps": [r for r in (row["reps"] or "").split(",") if r],

@@ -138,12 +138,12 @@ def test_rename_and_delete_session_only_by_owner():
     auth.seed_users()
     db.claim_session("s1", "dana")
     db.save_messages("s1", [{"role": "user", "content": "שאלה ארוכה על הנטו שלי אחרי החלפת רכב"}])
-    assert db.list_user_sessions("dana")[0]["title"].startswith("שאלה ארוכה")          # שם אוטומטי
+    assert db.list_user_sessions("dana")[0]["title"].startswith("בדיקת נטו")           # שם אוטומטי (עוד אין נושא)
     assert db.rename_session("s1", "moshe", "פריצה") is False                           # לא הבעלים
     assert db.rename_session("s1", "dana", "  הרכב החדש  ") is True
     assert db.list_user_sessions("dana")[0]["title"] == "הרכב החדש"
     db.rename_session("s1", "dana", "")                                                 # ריק = חזרה לשם האוטומטי
-    assert db.list_user_sessions("dana")[0]["title"].startswith("שאלה ארוכה")
+    assert db.list_user_sessions("dana")[0]["title"].startswith("בדיקת נטו")
     assert db.delete_session("s1", "moshe") is False and db.session_exists("s1")
     db.create_question("s1", "new_participation", "חסר", "סיכום")
     assert db.delete_session("s1", "dana") is True
@@ -237,3 +237,22 @@ def test_append_messages_keeps_concurrent_messages_and_summary_columns():
     assert contents == ["שלום", "שאלה ראשונה", "תשובת נציג", "תשובת הבוט"]
     row = db.list_user_sessions("dana")[0]
     assert row["preview"] == "שאלה ראשונה" and row["messages"] == 1
+
+
+def test_session_title_is_professional_and_follows_the_topic():
+    from state import ConversationState
+    auth.seed_users()
+    db.claim_session("t1", "dana")
+    db.save_messages("t1", [{"role": "user", "content": "אני רוצה לעבור לרכב חשמלי"}])
+    assert db.list_user_sessions("dana")[0]["title"].startswith("בדיקת נטו · ")
+    state = db.load_state("t1")
+    state.target.kind, state.target.label = "car", "BYD ATTO 3"
+    db.save_state(state)
+    title = db.list_user_sessions("dana")[0]["title"]
+    assert title.startswith("השוואה ל-BYD ATTO 3 · ") and "אני רוצה" not in title
+    state.target.kind, state.target.label = "waiver", None
+    db.save_state(state)
+    assert db.list_user_sessions("dana")[0]["title"].startswith("ויתור על רכב · ")
+    assert db.list_all_sessions()[0]["title"].startswith("ויתור על רכב · ")            # אותו שם גם במסך המנהל
+    db.rename_session("t1", "dana", "הרכב של אשתי")
+    assert db.list_user_sessions("dana")[0]["title"] == "הרכב של אשתי"                  # שם ידני גובר
