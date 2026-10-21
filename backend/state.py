@@ -5,7 +5,7 @@
 """
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 # שדות עובד שחובה למלא לפני חישוב (0 הוא ערך חוקי לעמלות/בונוס/קרן השתלמות)
 REQUIRED_EMPLOYEE_FIELDS = {
@@ -81,6 +81,8 @@ class ConversationState(BaseModel):
     pending_inquiry_car: dict[str, str] = Field(default_factory=dict)
     last_result: Optional[dict] = None
     result_is_stale: bool = False
+    # צילום המצב כפי שנטען מהמסד: השמירה כותבת רק את מה שהשתנה לעומתו (ראו db.save_state)
+    _base: Optional[dict] = PrivateAttr(default=None)
 
     def missing_required_fields(self) -> list[str]:
         """שמות (בעברית) של הנתונים שעדיין חסרים לחישוב."""

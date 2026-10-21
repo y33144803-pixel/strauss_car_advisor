@@ -8,6 +8,8 @@ import sqlite3
 from contextlib import closing
 from datetime import datetime, timedelta
 
+from pydantic import BaseModel
+
 from state import ConversationState
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -132,7 +134,9 @@ def load_state(session_id: str) -> ConversationState:
         row = conn.execute("SELECT state_json FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
     if row is None:
         return ConversationState(session_id=session_id)
-    return ConversationState.model_validate_json(row["state_json"])
+    state = ConversationState.model_validate_json(row["state_json"])
+    state._base = state.model_dump()                 # לעומת זה ייבדק מה השתנה בשמירה
+    return state
 
 
 TOPIC_VERSION = 2       # גרסת ניסוח הנושא: העלאה מחשבת מחדש את הנושאים של שיחות קיימות
@@ -164,8 +168,71 @@ def display_title(custom: str | None, topic: str | None, created_at: str) -> str
     return f"בדיקת נטו · {created:%d/%m %H:%M}"
 
 
+def _changes(base, new, path=()) -> tuple[list[tuple], list[tuple]]:
+    """(שדות ששונו או נוספו, שדות שנמחקו) בין שני עצי מילונים. רשימות וערכים בודדים מושווים כיחידה אחת."""
+    changed, removed = [], []
+    for key, value in new.items():
+        if key not in base:
+            changed.append((path + (key,), value))
+        elif isinstance(value, dict) and isinstance(base[key], dict):
+            sub_changed, sub_removed = _changes(base[key], value, path + (key,))
+            changed += sub_changed
+            removed += sub_removed
+        elif value != base[key]:
+            changed.append((path + (key,), value))
+    removed += [path + (key,) for key in base if key not in new]
+    return changed, removed
+
+
+def _merge_changes(current: dict, changed, removed) -> None:
+    for keys, value in changed:
+        node = current
+        for key in keys[:-1]:
+            node = node.setdefault(key, {})
+        node[keys[-1]] = value
+    for keys in removed:
+        node = current
+        for key in keys[:-1]:
+            node = node.get(key) or {}
+        node.pop(keys[-1], None)
+
+
+def _assign(dst, src) -> None:
+    """מעתיק שדות מ-src ל-dst במקום (גם אובייקטים מקוננים), כדי שהפניות שהקורא מחזיק ימשיכו להיות תקפות."""
+    for name in type(src).model_fields:
+        value = getattr(src, name)
+        if isinstance(value, BaseModel):
+            _assign(getattr(dst, name), value)
+        else:
+            setattr(dst, name, value)
+
+
 def save_state(state: ConversationState) -> None:
+    """שומר את המצב. אם הוא נטען קודם מהמסד - נכתבים רק השדות ששונו מאז הטעינה, על גבי המצב העדכני במסד
+    (בתוך נעילה), כך ששמירה מקבילה של תהליך אחר (למשל תשובת נציג) לא נדרסת."""
     init_db()
+    if state._base is not None:
+        with closing(_connect()) as conn:
+            conn.isolation_level = None                          # עסקה ידנית
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                row = conn.execute("SELECT state_json FROM sessions WHERE session_id = ?", (state.session_id,)).fetchone()
+                if row is not None:
+                    current = json.loads(row["state_json"])
+                    changed, removed = _changes(state._base, state.model_dump())
+                    _merge_changes(current, changed, removed)
+                    merged = ConversationState.model_validate(current)
+                    conn.execute("""UPDATE sessions SET state_json = ?, updated_at = ?, topic = ?, topic_v = ?
+                                    WHERE session_id = ?""",
+                                 (merged.model_dump_json(), _now(), _topic(merged), TOPIC_VERSION, state.session_id))
+                conn.execute("COMMIT")
+            except BaseException:
+                conn.execute("ROLLBACK")
+                raise
+        if row is not None:
+            _assign(state, merged)                               # האובייקט של הקורא מתעדכן (במקום) למצב המשולב
+            state._base = merged.model_dump()
+            return
     with closing(_connect()) as conn, conn:
         conn.execute("""
             INSERT INTO sessions (session_id, state_json, created_at, updated_at, topic, topic_v) VALUES (?, ?, ?, ?, ?, ?)
@@ -183,7 +250,7 @@ def load_messages(session_id: str) -> list[dict]:
 
 def _summary(messages: list[dict]) -> tuple[str | None, int]:
     """(ההודעה הראשונה של העובד, כמה הודעות כתב) - נשמרים בעמודות כדי שרשימות השיחות לא יפענחו את כל ה-JSON."""
-    users = [m["content"] for m in messages if m["role"] == "user"]
+    users = [m["content"] for m in messages if m["role"] == "user" and not m.get("hidden")]
     return (users[0] if users else None), len(users)
 
 
