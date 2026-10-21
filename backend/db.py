@@ -1,8 +1,12 @@
-"""SQLite: שמירת מצב השיחות והשאלות לנציג, כדי שהתהליך ישרוד רענון ויעבור בין מסך העובד למסך הנציג."""
+"""מסד הנתונים: שמירת מצב השיחות והשאלות לנציג, כדי שהתהליך ישרוד רענון ויעבור בין מסך העובד למסך הנציג.
+
+ברירת המחדל: SQLite בקובץ (STRAUSS_DB_PATH). כשמוגדר DATABASE_URL (למשל Postgres ב-Render) משתמשים ב-Postgres.
+שאר הקוד כותב שאילתות בסגנון SQLite (סימני ? ושורות בגישה לפי שם), ושכבת התאמה קטנה (_PgConnection) מתרגמת אותן."""
 import re
 import hashlib
 import json
 import os
+import queue
 import secrets
 import sqlite3
 from contextlib import closing
@@ -20,12 +24,125 @@ def db_path() -> str:
     return os.environ.get("STRAUSS_DB_PATH", DEFAULT_DB_PATH)
 
 
-def _connect() -> sqlite3.Connection:
+def database_url() -> str | None:
+    """כתובת Postgres (DATABASE_URL), או None כשעובדים עם SQLite. ספקים מסוימים נותנים 'postgres://' - מתקנים ל-postgresql://."""
+    url = (os.environ.get("DATABASE_URL") or "").strip()
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+    return url or None
+
+
+def using_postgres() -> bool:
+    return database_url() is not None
+
+
+_POOL: dict[str, queue.SimpleQueue] = {}          # חיבורי Postgres פנויים לשימוש חוזר (פתיחת חיבור לכל שאילתה איטית)
+
+
+class _PgCursor:
+    def __init__(self, cursor):
+        self._cursor = cursor
+        self.rowcount = cursor.rowcount
+
+    def fetchone(self):
+        return self._cursor.fetchone() if self._cursor.description else None
+
+    def fetchall(self):
+        return self._cursor.fetchall() if self._cursor.description else []
+
+    def __iter__(self):
+        return iter(self.fetchall())
+
+
+class _PgConnection:
+    """עוטף חיבור psycopg כך שיתנהג כמו חיבור sqlite3 בשימוש שלנו: execute עם ?, שורות לפי שם, with = commit/rollback."""
+
+    def __init__(self, raw, url: str):
+        self._raw, self._url = raw, url
+
+    isolation_level = None                         # (קיים ב-sqlite3; כאן אין משמעות)
+
+    def execute(self, sql: str, params=()):
+        command = sql.strip().upper()
+        if command in ("BEGIN", "BEGIN IMMEDIATE"):     # ב-Postgres העסקה נפתחת לבד; הנעילה נעשית ב-FOR UPDATE
+            return _PgCursor(self._raw.execute("SELECT 1"))
+        if command == "COMMIT":
+            self._raw.commit()
+            return None
+        if command == "ROLLBACK":
+            self._raw.rollback()
+            return None
+        return _PgCursor(self._raw.execute(sql.replace("?", "%s"), params))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if exc_type is None:
+            self._raw.commit()
+        else:
+            self._raw.rollback()
+        return False
+
+    def close(self) -> None:
+        """מחזיר את החיבור למאגר (אחרי ביטול עסקה פתוחה), או סוגר אותו אם הוא שבור או שהמאגר מלא."""
+        try:
+            if self._raw.closed:
+                return
+            self._raw.rollback()
+            pool = _POOL.setdefault(self._url, queue.SimpleQueue())
+            if pool.qsize() < 5:
+                pool.put(self._raw)
+                return
+            self._raw.close()
+        except Exception:
+            pass
+
+
+def _connect_postgres(url: str) -> _PgConnection:
+    import psycopg
+    from psycopg.rows import dict_row
+    pool = _POOL.setdefault(url, queue.SimpleQueue())
+    while True:
+        try:
+            raw = pool.get_nowait()
+        except queue.Empty:
+            raw = psycopg.connect(url, row_factory=dict_row, connect_timeout=15)
+            break
+        try:
+            raw.execute("SELECT 1")                 # החיבור במאגר עלול להיות סגור (למשל המסד נרדם) - מנסים את הבא
+            raw.rollback()
+            break
+        except Exception:
+            try:
+                raw.close()
+            except Exception:
+                pass
+    return _PgConnection(raw, url)
+
+
+def _connect():
+    url = database_url()
+    if url:
+        return _connect_postgres(url)
     path = db_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _lock_suffix() -> str:
+    """נעילת השורה בקריאה שלפני כתיבה (ב-SQLite הנעילה נעשית ב-BEGIN IMMEDIATE)."""
+    return " FOR UPDATE" if using_postgres() else ""
+
+
+def _columns(conn, table: str) -> list[str]:
+    if using_postgres():
+        rows = conn.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() "
+                            "AND table_name = ?", (table,)).fetchall()
+        return [row["column_name"] for row in rows]
+    return [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]
 
 
 def _now() -> str:
@@ -36,11 +153,11 @@ _READY: set[str] = set()                           # מסדים שכבר אות�
 
 
 def init_db() -> None:
-    path = db_path()
-    if path in _READY and os.path.exists(path):
+    key = database_url() or db_path()
+    if key in _READY and (using_postgres() or os.path.exists(key)):
         return
     _init_schema()
-    _READY.add(path)
+    _READY.add(key)
 
 
 def _init_schema() -> None:
@@ -62,7 +179,7 @@ def _init_schema() -> None:
                 created_at TEXT NOT NULL,
                 origin_username TEXT                   -- השם שהוגדר ב-AUTH_USERS (נשמר גם אחרי החלפת שם משתמש)
             )""")
-        user_columns = [row[1] for row in conn.execute("PRAGMA table_info(users)")]
+        user_columns = _columns(conn, "users")
         if "consent_at" not in user_columns:          # אישור שמירת השיחות (נדרש פעם אחת מכל עובד)
             conn.execute("ALTER TABLE users ADD COLUMN consent_at TEXT")
         if "origin_username" not in user_columns:
@@ -74,7 +191,7 @@ def _init_schema() -> None:
                 username TEXT NOT NULL,
                 expires_at TEXT NOT NULL
             )""")
-        columns = [row[1] for row in conn.execute("PRAGMA table_info(sessions)")]
+        columns = _columns(conn, "sessions")
         if "username" not in columns:                  # שיחות ישנות (לפני ההתחברות) נשארות בלי בעלים
             conn.execute("ALTER TABLE sessions ADD COLUMN username TEXT")
         if "first_user" not in columns:                # תקציר לרשימות: ההודעה הראשונה של העובד ומספר הודעותיו
@@ -108,19 +225,19 @@ def _init_schema() -> None:
             conn.execute("ALTER TABLE sessions ADD COLUMN title TEXT")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS rep_questions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id %s,
                 session_id TEXT NOT NULL,
                 missing_field TEXT NOT NULL,
                 context_message TEXT NOT NULL,
                 employee_summary TEXT,
                 status TEXT NOT NULL DEFAULT 'open',   -- open / answered / applied / cancelled
-                answer_value REAL,
+                answer_value DOUBLE PRECISION,
                 answer_note TEXT,
                 effective_from TEXT,
                 created_at TEXT NOT NULL,
                 answered_at TEXT
-            )""")
-        rep_columns = [row[1] for row in conn.execute("PRAGMA table_info(rep_questions)")]
+            )""" % ("SERIAL PRIMARY KEY" if using_postgres() else "INTEGER PRIMARY KEY AUTOINCREMENT"))
+        rep_columns = _columns(conn, "rep_questions")
         if "answered_by" not in rep_columns:           # שם המשתמש של הנציג שענה
             conn.execute("ALTER TABLE rep_questions ADD COLUMN answered_by TEXT")
 
@@ -216,7 +333,8 @@ def save_state(state: ConversationState) -> None:
             conn.isolation_level = None                          # עסקה ידנית
             conn.execute("BEGIN IMMEDIATE")
             try:
-                row = conn.execute("SELECT state_json FROM sessions WHERE session_id = ?", (state.session_id,)).fetchone()
+                row = conn.execute("SELECT state_json FROM sessions WHERE session_id = ?" + _lock_suffix(),
+                                   (state.session_id,)).fetchone()
                 if row is not None:
                     current = json.loads(row["state_json"])
                     changed, removed = _changes(state._base, state.model_dump())
@@ -274,7 +392,8 @@ def append_messages(session_id: str, new_messages: list[dict]) -> list[dict]:
     with closing(_connect()) as conn:
         conn.execute("BEGIN IMMEDIATE")
         with conn:
-            row = conn.execute("SELECT messages_json FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
+            row = conn.execute("SELECT messages_json FROM sessions WHERE session_id = ?" + _lock_suffix(),
+                               (session_id,)).fetchone()
             messages = (json.loads(row["messages_json"]) if row else []) + list(new_messages)
             first_user, count = _summary(messages)
             conn.execute("""UPDATE sessions SET messages_json = ?, updated_at = ?, first_user = ?, user_messages = ?
@@ -317,7 +436,7 @@ def rename_user(old: str, new: str) -> bool:
     """מחליף שם משתמש ומעביר איתו את השיחות והאסימונים. False אם השם החדש כבר תפוס."""
     init_db()
     with closing(_connect()) as conn, conn:
-        taken = conn.execute("SELECT 1 FROM users WHERE username = ? COLLATE NOCASE", (new,)).fetchone()
+        taken = conn.execute("SELECT 1 FROM users WHERE LOWER(username) = LOWER(?)", (new,)).fetchone()
         if taken and old.casefold() != new.casefold():
             return False
         conn.execute("UPDATE users SET username = ? WHERE username = ?", (new, old))
@@ -381,7 +500,7 @@ def create_user(username: str, display_name: str, role: str, password_hash: str)
     """יוצר משתמש חדש. False אם שם המשתמש כבר תפוס (בלי הבחנה בין אותיות גדולות לקטנות)."""
     init_db()
     with closing(_connect()) as conn, conn:
-        if conn.execute("SELECT 1 FROM users WHERE username = ? COLLATE NOCASE OR origin_username = ? COLLATE NOCASE",
+        if conn.execute("SELECT 1 FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(origin_username) = LOWER(?)",
                         (username, username)).fetchone():
             return False
         conn.execute("""INSERT INTO users (username, display_name, role, password_hash, created_at, origin_username)
@@ -494,10 +613,12 @@ def list_all_sessions() -> list[dict]:
                                          AND q.status != 'cancelled') AS rep_total,
                                       (SELECT COUNT(*) FROM rep_questions q WHERE q.session_id = s.session_id
                                          AND q.status = 'open') AS rep_open,
-                                      (SELECT group_concat(DISTINCT q.answered_by) FROM rep_questions q
+                                      (SELECT __REPS__ FROM rep_questions q
                                          WHERE q.session_id = s.session_id AND q.answered_by IS NOT NULL) AS reps
                                FROM sessions s LEFT JOIN users u ON u.username = s.username
-                               ORDER BY s.updated_at DESC""").fetchall()
+                               ORDER BY s.updated_at DESC""".replace(
+            "__REPS__", "STRING_AGG(DISTINCT q.answered_by, ',')" if using_postgres() else "group_concat(DISTINCT q.answered_by)")
+        ).fetchall()
     sessions = []
     for row in rows:
         first_user = row["first_user"]
@@ -550,8 +671,9 @@ def create_question(session_id: str, missing_field: str, context_message: str, e
     with closing(_connect()) as conn, conn:
         cur = conn.execute("""
             INSERT INTO rep_questions (session_id, missing_field, context_message, employee_summary, created_at)
-            VALUES (?, ?, ?, ?, ?)""", (session_id, missing_field, context_message, employee_summary, _now()))
-        return cur.lastrowid
+            VALUES (?, ?, ?, ?, ?)""" + (" RETURNING id" if using_postgres() else ""),
+                           (session_id, missing_field, context_message, employee_summary, _now()))
+        return cur.fetchone()["id"] if using_postgres() else cur.lastrowid
 
 
 def find_open_question(session_id: str, missing_field: str) -> dict | None:

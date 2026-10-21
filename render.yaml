@@ -1,6 +1,6 @@
 # פריסה חינמית ל-Render (Blueprint). לא נבדק מול Render בפועל - יש לאמת מול התיעוד העדכני שלהם.
-# בתוכנית החינמית אין דיסק קבוע: מסד הנתונים נשמר ב-/tmp ונמחק כשהשירות נרדם או מופעל מחדש
-# (שיחות ושאלות לנציג הולכות לאיבוד). מתאים לדמו, לא לפיילוט.
+# בתוכנית החינמית אין דיסק קבוע. לנתונים קבועים: מסד Postgres (DATABASE_URL, ראו README) - אז STRAUSS_DB_PATH לא בשימוש.
+# בלי DATABASE_URL המסד הוא קובץ ב-/tmp שנמחק כשהשירות נרדם או מופעל מחדש.
 # לשירות עם נתונים קבועים: plan: starter + בלוק disk (ראו README, סעיף "פריסה לענן").
 # המפתחות והסיסמה מוגדרים בלוח הבקרה (sync: false), לא בקובץ.
 services:
@@ -12,6 +12,8 @@ services:
     envVars:
       - key: STRAUSS_DB_PATH
         value: /tmp/advisor.db
+      - key: DATABASE_URL
+        sync: false          # כתובת Postgres (Internal Database URL מ-Render). סוד: רק בלוח הבקרה
       - key: LLM_PROVIDER
         value: gemini
       - key: LLM_MODEL

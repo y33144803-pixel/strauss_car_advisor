@@ -184,18 +184,18 @@ def test_admin_sees_all_sessions():
     assert {s["username"] for s in db.list_all_sessions()} == {"alice", "bobby"}
 
 
-def test_backup_roundtrip_restores_users_with_passwords(tmp_path, monkeypatch):
+def test_backup_roundtrip_restores_users_with_passwords(fresh_database):
     auth.create_user("carol", "secret-1", "rep", "קרול")
     text = auth.export_users_json()
     assert "secret-1" not in text                      # רק גיבוב, לא סיסמה גלויה
-    monkeypatch.setenv("STRAUSS_DB_PATH", str(tmp_path / "fresh.db"))      # שרת חדש עם מסד ריק
+    fresh_database("fresh.db")                          # שרת חדש עם מסד ריק
     assert db.get_user("carol") is None
     assert auth.import_users_json(text) == 1
     assert auth.authenticate("carol", "secret-1")["role"] == "rep"
     assert auth.import_users_json(text) == 0           # שוב: לא נדרס ולא מוכפל
 
 
-def test_bad_backup_is_rejected_and_startup_loads_file(tmp_path, monkeypatch):
+def test_bad_backup_is_rejected_and_startup_loads_file(tmp_path, monkeypatch, fresh_database):
     for bad in ("not json", '{"users": [{"username": "x"}]}', '{"users": [{"username": "abc", "display_name": "d", '
                 '"role": "root", "password_hash": "a$b$c"}]}'):
         with pytest.raises(auth.LoginError):
@@ -204,7 +204,7 @@ def test_bad_backup_is_rejected_and_startup_loads_file(tmp_path, monkeypatch):
     backup = tmp_path / "users_backup.json"
     backup.write_text(auth.export_users_json(), encoding="utf-8")
     monkeypatch.setattr(auth, "BACKUP_FILE", str(backup))
-    monkeypatch.setenv("STRAUSS_DB_PATH", str(tmp_path / "fresh2.db"))
+    fresh_database("fresh2.db")
     monkeypatch.setenv("AUTH_USERS", "")
     auth.seed_users()
     assert auth.authenticate("dave", "secret-1")
