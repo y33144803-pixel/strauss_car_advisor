@@ -16,6 +16,7 @@ import db
 from actions import format_result_message
 from agent_tools import REP_FIELDS, apply_representative_answers
 from agent_tools_registry import build_tools, load_specs
+from data_store import get_rules
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROMPT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prompts", "system_prompt.md")
@@ -285,8 +286,11 @@ def check_representative_updates(session_id: str) -> str | None:
     lines, bot_notes, no_amount = [], [], []
     for ev in events:
         if "field" in ev:
-            if ev["value"] is None and ev["field"] != REP_FIELDS["eligibility_group"]:
-                # תשובה בלי סכום (למשל "הרכב לא קיים", או שאלת "אחר"): ההערה מיועדת לבוט, והוא מחליט מה לומר לעובד
+            group_answer = (ev["field"] == REP_FIELDS["eligibility_group"]
+                            and (ev.get("note") or "").strip().replace("'", "").replace("׳", "") in get_rules()["groupOrder"])
+            if ev["value"] is None and not group_answer:
+                # תשובה בלי סכום (למשל "הרכב לא קיים", "אין ערך למסירה", או שאלת "אחר"): ההערה מיועדת לבוט, והוא מחליט מה לומר לעובד.
+                # (תשובה עם אות קבוצת זכאות היא כן תשובה לעובד)
                 no_amount.append(f"{ev['field']}" + (f" ({ev['car']})" if ev.get("car") else "")
                                  + (f": {ev['note']}" if ev.get("note") else " (ללא הערה)"))
                 continue

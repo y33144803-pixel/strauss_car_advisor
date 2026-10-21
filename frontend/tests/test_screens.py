@@ -134,9 +134,10 @@ def test_representative_answer_flows_back_to_employee_screen():
 
     rep = signed_in(AppTest.from_file(os.path.join(VIEWS, "representative.py"), default_timeout=30)).run()
     assert not rep.exception
-    assert any("שאלות פתוחות (1)" in s.value for s in rep.subheader)
+    assert [b.key for b in rep.button if b.key and b.key.startswith("stat_")] == ["stat_open", "stat_answered"]   # הריבועים הם המתג
+    assert [e.label.split(" · ")[0] for e in rep.expander] == [f"#{db.list_questions('open')[0]['id']}"]   # כרטיס נפתח לכל שאלה
     rep.number_input[0].set_value(350)
-    rep.button[0].click().run()                                  # "שלח תשובה"
+    next(b for b in rep.button if b.label == "שלח תשובה").click().run()                                  # "שלח תשובה"
     assert db.list_questions("open") == []
     assert db.list_questions("answered")[0]["answer_value"] == 350
 
@@ -152,14 +153,29 @@ def test_representative_cannot_submit_empty_amount():
     ask_rep("EV3 בקבוצה ג")
 
     rep = signed_in(AppTest.from_file(os.path.join(VIEWS, "representative.py"), default_timeout=30)).run()
-    rep.button[0].click().run()                                  # שליחה בלי סכום
+    next(b for b in rep.button if b.label == "שלח תשובה").click().run()                                  # שליחה בלי סכום
     assert any("יש להזין סכום" in e.value for e in rep.error)
     assert len(db.list_questions("open")) == 1                   # השאלה נשארת פתוחה
 
     rep.number_input[0].set_value(0)                             # אפס מפורש הוא תשובה חוקית
-    rep.button[0].click().run()
+    next(b for b in rep.button if b.label == "שלח תשובה").click().run()
     answered = db.list_questions("answered")
     assert len(answered) == 1 and answered[0]["answer_value"] == 0
+
+
+def test_representative_can_answer_no_value_on_any_question():
+    fill_to_comparison()
+    verify_budget_and_eligibility(SID, "CAR-11")
+    ask_rep("EV3 בקבוצה ג")
+
+    rep = signed_in(AppTest.from_file(os.path.join(VIEWS, "representative.py"), default_timeout=30)).run()
+    rep.checkbox[0].check()                                      # "אין ערך למסירה"
+    next(b for b in rep.button if b.label == "שלח תשובה").click().run()                                  # בלי הערה
+    assert any("יש לכתוב הערה" in e.value for e in rep.error)
+    rep.text_input[0].set_value("הרכב אינו קיים")
+    next(b for b in rep.button if b.label == "שלח תשובה").click().run()
+    answered = db.list_questions("answered")
+    assert len(answered) == 1 and answered[0]["answer_value"] is None and answered[0]["answer_note"] == "הרכב אינו קיים"
 
 
 # ------------------------------------------------------------ קטלוג בפאנל, בידוד כיווניות, שגיאות וניסיון חוזר
@@ -434,13 +450,13 @@ def test_employee_login_shows_chat_with_own_first_letter_and_no_rep_screen(auth_
     assert not at.exception and at.chat_input
     css = " ".join(m.value for m in at.markdown)
     assert 'content: "ד"' in css                                      # האות הראשונה של "דנה כהן"
-    assert not any("שאלות פתוחות" in s.value for s in at.subheader)
+    assert not [b for b in at.button if b.key and b.key.startswith("stat_")]
 
 
 def test_representative_login_shows_rep_screen_not_chat(auth_on):
     at = app_with_login("moshe", "secret-2")
     assert not at.exception
-    assert any("שאלות פתוחות" in s.value for s in at.subheader)
+    assert any(b.key == "stat_open" for b in at.button)
     assert not at.chat_input
 
 
@@ -623,15 +639,15 @@ def test_account_forms_have_cancel_buttons(account_users):
     assert db.get_user("dana")
 
 
-def test_data_card_becomes_a_collapsed_dropdown_while_comparison_is_shown():
-    only_data = employee_app()                                         # בלי תוצאה: הנתונים מוצגים רגיל
-    assert not only_data.expander
-    assert "הנתונים שנקלטו עד כה" in sidebar_text(only_data)
+def test_data_comparison_and_calc_are_collapsed_sections_with_their_own_copy_and_download():
+    only_data = employee_app()                                         # בלי תוצאה: רק הנתונים, פתוחים
+    assert [e.label for e in only_data.expander] == ["הצג נתונים"]
+    assert only_data.expander[0].proto.expanded is True
 
     fill_to_comparison()
     both = employee_app()
-    assert [e.label for e in both.expander] == ["הצג נתונים", "איך חושב?"]    # עם תוצאה: תיבה נפתחת + פירוט החישוב
-    assert both.expander[0].proto.expanded is False                     # סגורה כברירת מחדל
+    assert [e.label for e in both.expander] == ["הצג נתונים", "הצג השוואה", "הצג איך חושב"]
+    assert all(e.proto.expanded is False for e in both.expander)        # הכול סגור כברירת מחדל
     assert "הנתונים שנקלטו עד כה" in " ".join(m.value for m in both.expander[0].markdown)
 
     closed = employee_app(side_panel=False)                             # פאנל סגור: אין נתונים ואין השוואה בצד
@@ -647,7 +663,8 @@ def test_greeting_asks_what_the_employee_wants_to_do():
 def test_admin_screen_lists_users_and_sessions():
     at = signed_in(AppTest.from_file(os.path.join(VIEWS, "admin.py"), default_timeout=30), role="admin").run()
     assert not at.exception
-    assert [t.label for t in at.tabs] == ["שיחות", "משתמשים"]
+    assert [t.label for t in at.tabs] == ["שיחות", "משתמשים", "סטטיסטיקות"]
+    assert [m.label for m in at.metric][:2] == ["שיחות", "עובדים שהשתמשו"]          # לשונית הסטטיסטיקות
 
 
 def test_admin_screen_blocked_for_employee():
@@ -868,3 +885,25 @@ def test_old_unanswered_session_opened_fresh_is_not_answered_automatically(monke
     monkeypatch.setattr(agent, "chat", lambda *a, **k: calls.append(1) or {})
     at = employee_app()                                        # שיחה ישנה שנפתחה בחלון חדש: אין קריאה אוטומטית למודל
     assert not calls and any(b.label == "נסיון חוזר" for b in at.button)
+
+
+
+def test_collect_stats_counts_sessions_and_questions():
+    import importlib.util
+    from datetime import date
+    spec = importlib.util.spec_from_file_location("admin_stats", os.path.join(VIEWS, "admin.py"))
+    src = open(spec.origin, encoding="utf-8").read()
+    ns = {}
+    exec(src[src.index("def collect_stats"):src.index("ROLE_NAMES")], {"date": date, "datetime": __import__("datetime").datetime,
+                                                                       "REP_FIELDS": {"new_participation": "השתתפות"}}, ns)
+    sessions = [{"username": "a", "messages": 4, "created_at": "2026-10-20T10:00:00", "rep_total": 1},
+                {"username": "b", "messages": 2, "created_at": "2026-10-21T10:00:00", "rep_total": 0}]
+    questions = [{"status": "applied", "missing_field": "new_participation", "created_at": "2026-10-20T10:00:00",
+                  "answered_at": "2026-10-20T12:00:00", "answered_by": "moshe"},
+                 {"status": "open", "missing_field": "other", "created_at": "2026-10-21T10:00:00", "answered_at": None},
+                 {"status": "cancelled", "missing_field": "other", "created_at": "2026-10-21T10:00:00", "answered_at": None}]
+    stats = ns["collect_stats"](sessions, questions, [{"role": "rep"}], today=date(2026, 10, 22))
+    assert (stats["sessions"], stats["messages"], stats["avg_messages"], stats["employees"]) == (2, 6, 3.0, 2)
+    assert (stats["questions"], stats["open"], stats["answered"], stats["avg_answer_hours"]) == (2, 1, 1, 2.0)
+    assert stats["by_rep"] == {"moshe": 1} and stats["users_by_role"]["rep"] == 1
+    assert sum(stats["per_day"].values()) == 2 and len(stats["per_day"]) == 14

@@ -13,8 +13,9 @@ from agent_tools import REP_FIELDS
 from data_store import find_occupation
 from payslip import (ALLOWED_TYPES, FIELD_LABELS, OCCUPATION_LABEL, PayslipError, apply_payslip, check_file,
                      extract_payslip, summary_text)
-from ui import (CLOSE_PICKER, avatar_for, get_session_id, render_car_picker, render_comparison,
-                render_history_sidebar, render_rail_header, render_state_card, require_consent, require_role, show_markdown, typing_status_html)
+from ui import (CLOSE_PICKER, avatar_for, get_session_id, render_calc_breakdown, render_car_picker, render_comparison,
+                render_copy_download, render_history_sidebar, render_rail_header, render_state_card, require_consent,
+                require_role, show_markdown, state_csv, state_text, typing_status_html)
 
 require_role("employee")                # רק עובדים (או התחברות כבויה בפיתוח מקומי)
 logger = logging.getLogger("strauss.employee")
@@ -186,16 +187,16 @@ if side_open:
     chat_col, side_col = st.columns([3, 2], gap="medium")
     result_col = side_col.container(key="side-rail")      # כרטיס הצד הסגול: הדמות, הנתונים וההשוואה
     with result_col:
+        st.button("✕", key="close_side", help="סגירת הנתונים וההשוואה", on_click=set_side_panel, args=(False,))
         render_rail_header()
     if show_data:
         with result_col:
-            if show_comparison:
-                # כשההשוואה מוצגת, הנתונים נאספים לתיבה נפתחת "הצג נתונים" (סגורה כברירת מחדל);
-                # כשההשוואה נעלמת הם חוזרים להיראות כרגיל
-                with st.expander("הצג נתונים", expanded=False):
-                    data_slot = st.empty()
-            else:
+            # שלושה חלקים נפתחים, כל אחד עם העתקה והורדה משלו שמוצגים רק כשהחלק פתוח: נתונים, השוואה, איך חושב.
+            # כשיש השוואה הנתונים סגורים כברירת מחדל; בלי השוואה הם פתוחים (רואים אותם מתמלאים תוך כדי השיחה)
+            with st.expander("הצג נתונים", expanded=not show_comparison):
                 data_slot = st.empty()
+                render_copy_download(state_text(initial_state), state_csv(initial_state), "data", "העתקת הנתונים",
+                                     "הנתונים-שנקלטו.csv")
         draw_state_card()
 else:
     chat_col, result_col = st.container(), None
@@ -207,9 +208,7 @@ picker_open = bool(picker and picker["visible"])
 
 with chat_col:
     # כפתור אחד בראש השיחה: סוגר את פאנל הנתונים וההשוואה כשהוא פתוח, ופותח אותו כשהוא סגור
-    if side_open:
-        st.button("סגירת הנתונים וההשוואה", key="close_side", icon=":material/close:", on_click=set_side_panel, args=(False,))
-    else:
+    if not side_open:
         st.button("נתונים והשוואה", key="open_side", icon=":material/dock_to_left:", on_click=set_side_panel, args=(True,))
     # ההודעות מוצגות בקונטיינר שנוצר כאן ונמלא בהמשך - אחרי שהתור הנוכחי טופל.
     # כשהבורר פתוח החלון נמוך יותר, כדי שתיבת הקלט תישאר גלויה בלי לגלול
@@ -299,11 +298,13 @@ with chat_box:
 
 if show_comparison:
     with result_col:
-        st.subheader("השוואה")
-        with st.container(key="cmp-card"):
-            render_comparison(state.last_result, stale=state.result_is_stale)
-        if state.result_is_stale and st.button("חשב מחדש", type="primary"):
-            outcome = recalculate(sid)
-            if not outcome["ok"]:
-                st.warning(outcome["message"])
-            st.rerun()
+        with st.expander("הצג השוואה", expanded=False):
+            with st.container(key="cmp-card"):
+                render_comparison(state.last_result, stale=state.result_is_stale)
+            if state.result_is_stale and st.button("חשב מחדש", type="primary"):
+                outcome = recalculate(sid)
+                if not outcome["ok"]:
+                    st.warning(outcome["message"])
+                st.rerun()
+        with st.expander("הצג איך חושב", expanded=False):
+            render_calc_breakdown(state.last_result)

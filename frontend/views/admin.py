@@ -1,4 +1,5 @@
-"""מסך ניהול: צפייה בכל השיחות (לקריאה בלבד, עם סינון ומיון) וניהול משתמשים - הוספה, איפוס סיסמה ומחיקה."""
+"""מסך ניהול: צפייה בכל השיחות (לקריאה בלבד, עם סינון ומיון), ניהול משתמשים - הוספה, איפוס סיסמה ומחיקה - וסטטיסטיקות שימוש."""
+import html
 from datetime import date, datetime
 
 import streamlit as st
@@ -37,7 +38,7 @@ st.markdown("<style>[class*='st-key-sessrow_new_'] { background: #F4E9FB; border
             "[class*='st-key-sessrow_seen_'] { background: #fff; border: 1px solid var(--line); border-radius: 12px;"
             " padding: 6px 12px; }</style>", unsafe_allow_html=True)
 
-tab_sessions, tab_users = st.tabs(["שיחות", "משתמשים"], key="admin_tab", on_change="rerun")   # הלשונית נשמרת אחרי פעולה
+tab_sessions, tab_users, tab_stats = st.tabs(["שיחות", "משתמשים", "סטטיסטיקות"], key="admin_tab", on_change="rerun")   # הלשונית נשמרת אחרי פעולה
 
 def open_session(session_id: str) -> None:
     """callback של כפתור "צפייה": פותח את השיחה ורושם שהמנהל צפה בה."""
@@ -238,3 +239,88 @@ with tab_users:
             else:
                 st.session_state["admin_notice"] = f"נטענו {added} משתמשים חדשים מהגיבוי."
                 st.rerun()
+
+
+def collect_stats(sessions: list[dict], questions: list[dict], users: list[dict], today: date | None = None) -> dict:
+    """המספרים של לשונית הסטטיסטיקות, מחושבים מהשיחות, השאלות לנציג והמשתמשים (פונקציה נקייה, ניתנת לבדיקה)."""
+    today = today or date.today()
+    live = [q for q in questions if q["status"] != "cancelled"]
+    answered = [q for q in live if q["status"] in ("answered", "applied")]
+    hours = []
+    for q in answered:
+        if q.get("answered_at"):
+            hours.append((datetime.fromisoformat(q["answered_at"]) - datetime.fromisoformat(q["created_at"])).total_seconds() / 3600)
+    per_day = {today.fromordinal(today.toordinal() - i): 0 for i in range(13, -1, -1)}
+    for item in sessions:
+        day = datetime.fromisoformat(item["created_at"]).date()
+        if day in per_day:
+            per_day[day] += 1
+    by_field, by_rep = {}, {}
+    for q in live:
+        label = REP_FIELDS.get(q["missing_field"], q["missing_field"])
+        by_field[label] = by_field.get(label, 0) + 1
+    for q in answered:
+        by_rep[q.get("answered_by") or "?"] = by_rep.get(q.get("answered_by") or "?", 0) + 1
+    messages = sum(item["messages"] for item in sessions)
+    return {
+        "sessions": len(sessions), "messages": messages,
+        "avg_messages": round(messages / len(sessions), 1) if sessions else 0,
+        "employees": len({item["username"] for item in sessions}),
+        "sessions_with_rep": sum(1 for item in sessions if item["rep_total"]),
+        "questions": len(live), "open": sum(q["status"] == "open" for q in live), "answered": len(answered),
+        "avg_answer_hours": round(sum(hours) / len(hours), 1) if hours else None,
+        "per_day": per_day, "by_field": by_field, "by_rep": by_rep,
+        "users_by_role": {role: sum(u["role"] == role for u in users) for role in ("employee", "rep", "admin")},
+    }
+
+
+def bars_html(values: dict, color: str) -> str:
+    """עמודות אופקיות פשוטות (שם, עמודה, מספר) לקטגוריות עם שמות ארוכים בעברית - בלי כיתוב חתוך או הפוך כמו בגרף."""
+    top = max(values.values()) or 1
+    rows = [f"<div style='display:flex;align-items:center;gap:10px;margin:6px 0;direction:rtl'>"
+            f"<span style='flex:0 0 42%;font-size:.9rem'>{html.escape(str(label))}</span>"
+            f"<span style='flex:1;background:#F4EEFA;border-radius:8px;height:18px'>"
+            f"<span style='display:block;width:{max(100 * n / top, 3):.0f}%;height:100%;background:{color};border-radius:8px'></span></span>"
+            f"<b style='flex:0 0 2rem;text-align:left'>{n}</b></div>" for label, n in values.items()]
+    return "".join(rows)
+
+
+ROLE_NAMES = {"employee": "עובדים", "rep": "נציגים", "admin": "מנהלים"}
+
+with tab_stats:
+    users = db.list_users()
+    names = {u["username"]: u["display_name"] for u in users}
+    stats = collect_stats(db.list_all_sessions(), db.list_questions(None), users)
+    card_title("שימוש במערכת", "📊")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("שיחות", stats["sessions"])
+    c2.metric("עובדים שהשתמשו", stats["employees"])
+    c3.metric("הודעות של עובדים", stats["messages"])
+    c4.metric("הודעות ממוצע לשיחה", stats["avg_messages"])
+    st.markdown("**שיחות חדשות ב-14 הימים האחרונים**")
+    st.bar_chart({d.strftime("%d/%m"): n for d, n in stats["per_day"].items()}, color="#6D2FA0", height=260)
+
+    card_title("שאלות לנציגים", "🧑‍💼")
+    q1, q2, q3, q4 = st.columns(4)
+    q1.metric("שאלות שנשלחו", stats["questions"])
+    q2.metric("פתוחות", stats["open"])
+    q3.metric("נענו", stats["answered"])
+    q4.metric("זמן מענה ממוצע (שעות)", "-" if stats["avg_answer_hours"] is None else stats["avg_answer_hours"])
+    share = f"{stats['sessions_with_rep']} מתוך {stats['sessions']}" if stats["sessions"] else "-"
+    st.caption(f"שיחות שהועברה בהן שאלה לנציג: {share}")
+    left, right = st.columns(2)
+    with left:
+        st.markdown("**לפי סוג השאלה**")
+        if stats["by_field"]:
+            st.markdown(bars_html(stats["by_field"], "#A8338F"), unsafe_allow_html=True)
+        else:
+            st.caption("עדיין אין שאלות.")
+    with right:
+        st.markdown("**תשובות לפי נציג**")
+        if stats["by_rep"]:
+            st.markdown(bars_html({names.get(r, r): n for r, n in stats["by_rep"].items()}, "#6D2FA0"), unsafe_allow_html=True)
+        else:
+            st.caption("עדיין אין תשובות.")
+
+    card_title("משתמשים", "👥")
+    st.write(" · ".join(f"{ROLE_NAMES[role]}: {count}" for role, count in stats["users_by_role"].items()))

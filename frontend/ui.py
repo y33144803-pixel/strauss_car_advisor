@@ -328,19 +328,23 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 .st-key-chat-list button { justify-content: flex-start; text-align: right; }
 /* כפתורי סגירה / פתיחה של פאנל הנתונים וההשוואה */
 .st-key-side-rail { position: relative; }
-.st-key-close_side button, .st-key-open_side button { border-radius: 18px; background: var(--soft); border: 1px solid var(--line); color: var(--primary);
+.st-key-close_side { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: auto; z-index: 3; }
+.st-key-close_side button { width: 30px; height: 30px; min-height: 0; padding: 0; border-radius: 50%; background: var(--soft);
+    border: 0; color: var(--primary); font-weight: 700; font-size: 1rem; }
+.st-key-close_side button:hover { background: #EBDDF5; }
+.st-key-open_side button { border-radius: 18px; background: var(--soft); border: 1px solid var(--line); color: var(--primary);
     font-weight: 600; }
 .st-key-chat-list button p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
-/* איקון ⋯ בתוך כפתור השיחה, בקצה השמאלי שלו */
+/* איקון העריכה (שינוי שם ומחיקה) בתוך כפתור השיחה, בקצה הימני שלו; התאריך היחסי בקצה השמאלי */
 [class*="st-key-chatrow_"] { position: relative; }
 [class*="st-key-chatrow_"] > [data-testid="stLayoutWrapper"]:has([data-testid="stPopover"]) {
-    position: absolute; left: 6px; top: 50%; transform: translateY(-50%); width: auto; z-index: 2; }
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: auto; z-index: 2; }
 [class*="st-key-chatrow_"] [data-testid="stPopover"] button { background: transparent; border: 0; box-shadow: none;
     min-height: 0; padding: 2px 4px; color: #6b6b7b; }
 [class*="st-key-chatrow_"] [data-testid="stPopover"] button:hover { background: rgba(0,0,0,.08); }
 [class*="st-key-chatrow_a_"] [data-testid="stPopover"] button, [class*="st-key-chatrow_a_"] [data-testid="stPopover"] button * { color: #fff; }
 [class*="st-key-chatrow_"] [data-testid="stPopover"] button div[aria-hidden="true"] { display: none; }
-.st-key-chat-list button p { padding-left: 34px; }
+.st-key-chat-list button p { padding-right: 34px; }
 
 /* פאנל הצד: "הנתונים שנקלטו עד כה" */
 [data-testid="stSidebarContent"] { padding-top: 9.6rem; position: relative; }
@@ -353,9 +357,9 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 .st-key-chat-list button p { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.35; }
 /* שורת שיחה: השם מימין והתאריך היחסי ("היום", "אתמול") משמאל, באפור קטן */
 .st-key-chat-list button [data-testid="stMarkdownContainer"] { display: flex; flex-direction: row; justify-content: space-between;
-    align-items: baseline; gap: 10px; width: 100%; padding-left: 34px; }      /* מקום לאיקון התפריט (⋯) משמאל */
-.st-key-chat-list button [data-testid="stMarkdownContainer"] p { padding-left: 0; }
-.st-key-chat-list button [data-testid="stMarkdownContainer"] p:last-child { flex: 0 0 auto; width: auto; padding-left: 0;
+    align-items: baseline; gap: 10px; width: 100%; padding-right: 34px; }      /* מקום לאיקון העריכה מימין */
+.st-key-chat-list button [data-testid="stMarkdownContainer"] p { padding-right: 0; }
+.st-key-chat-list button [data-testid="stMarkdownContainer"] p:last-child { flex: 0 0 5.2rem; width: 5.2rem; text-align: left; white-space: nowrap; padding-right: 0;
     font-size: .78rem; font-weight: 400; color: var(--muted); order: 2; }
 [class*="st-key-chatrow_a_"] button [data-testid="stMarkdownContainer"] p:last-child { color: rgba(255,255,255,.85); }
 [data-testid="stSidebarHeader"] { display: none; }
@@ -364,8 +368,14 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 #open-sidebar-fab { position: fixed; right: 12px; top: 104px; z-index: 1000010; width: 38px; height: 38px; border-radius: 50%;
     border: 0; background: var(--primary); color: #fff; font-size: 1.2rem; cursor: pointer; display: flex;
     align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(124,58,168,.4); padding: 0; }
+/* כפתור "נתונים והשוואה" (הפאנל סגור): בצד שמאל מתחת לבאנר */
+.st-key-open_side { position: fixed; left: 12px; top: 104px; z-index: 1000009; width: auto; }
 /* סרגל סגור: מסתירים את התוכן שלו לגמרי (אחרת נשארים שרידים של הכפתורים באמצע המסך) */
 [data-testid="stSidebar"][aria-expanded="false"] { visibility: hidden; }
+[data-testid="stSidebar"][aria-expanded="false"] * { visibility: hidden !important; }
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarContent"] { display: none; }
+/* גרפים: כיוון שמאל-לימין (אחרת הצירים והכיתוב מתהפכים בעמוד שכולו מימין לשמאל) */
+[data-testid="stVegaLiteChart"], [data-testid="stArrowVegaLiteChart"] { direction: ltr; }
 .state-card { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: #fff; direction: rtl; }
 .state-card .state-title { font-weight: 700; color: var(--primary); margin-bottom: 4px; }
 .state-row { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0;
@@ -479,7 +489,7 @@ div.st-key-chatbox.st-key-chatbox, div.st-key-chatbox-btn.st-key-chatbox-btn, di
 /* שורת העובד: התמונה בצד שמאל והבועה צמודה אליה (בלי רווח באמצע) */
 [data-testid="stChatMessage"] { justify-content: flex-start !important; }
 [data-testid="stChatMessage"] > * { margin: 0 !important; }
-[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) { direction: ltr; flex-direction: row; justify-content: flex-start !important; width: fit-content; margin-inline-start: auto !important; }
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) { direction: ltr; flex-direction: row; justify-content: flex-start !important; width: fit-content; margin-left: 0 !important; margin-right: auto !important; }
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"] { direction: rtl; text-align: right; }
 [data-testid="stBottom"], [data-testid="stBottom"] > div, [data-testid="stBottomBlockContainer"] { background: transparent !important; }
 /* סרגל הצד כרטיס לבן מעוגל שצף מתחת לבאנר (כמו "השיחות שלי" בעיצוב) */
@@ -487,7 +497,7 @@ div.st-key-chatbox.st-key-chatbox, div.st-key-chatbox-btn.st-key-chatbox-btn, di
 [data-testid="stSidebarContent"] { background: #fff !important; margin: 6.8rem 10px 16px; height: calc(100vh - 6.8rem - 16px);
     border-radius: 24px; box-shadow: 0 14px 40px rgba(77,29,117,.12); border: 1px solid rgba(109,47,160,.08);
     padding: 3.4rem 14px 14px !important; overflow-y: auto; }
-#close-sidebar-btn { top: .9rem !important; }
+#close-sidebar-btn { top: .9rem !important; left: 50% !important; transform: translateX(-50%); }
 /* תיבת הכתיבה: שדה מעוגל עם מסגרת סגולה, כפתור שליחה בגרדיאנט וכפתור הצירוף (+) בלבנדר */
 [data-testid="stChatInput"] { border: 1.5px solid rgba(109,47,160,.25); border-radius: 18px; background: #fff;
     box-shadow: 0 4px 14px rgba(77,29,117,.07); }
@@ -498,7 +508,7 @@ div.st-key-chatbox.st-key-chatbox, div.st-key-chatbox-btn.st-key-chatbox-btn, di
 .st-key-new_chat_button button { background: linear-gradient(135deg, #C2378C, #6D2FA0); border: 0; border-radius: 14px; font-weight: 800;
                                  min-height: 2.9rem; box-shadow: 0 8px 18px rgba(109,47,160,.3); }
 .st-key-new_chat_button button, .st-key-new_chat_button button * { color: #fff; }
-.st-key-side-rail { background: linear-gradient(170deg, #3E1768 0%, #6D2FA0 60%, #A8338F 100%); border-radius: 24px; padding: 22px;
+.st-key-side-rail { background: linear-gradient(170deg, #3E1768 0%, #6D2FA0 60%, #A8338F 100%); border-radius: 24px; padding: 48px 22px 22px;
                     box-shadow: 0 22px 46px rgba(77,29,117,.36); }
 .st-key-side-rail h3, .st-key-side-rail h2 { color: #fff; }
 .rail-head { text-align: center; color: #fff; margin: 4px 0 14px; }
@@ -507,51 +517,50 @@ div.st-key-chatbox.st-key-chatbox, div.st-key-chatbox-btn.st-key-chatbox-btn, di
 .rail-head .rail-img img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 0; }
 .rail-head .rail-hello { font-size: 1.4rem; font-weight: 800; }
 .rail-head .rail-sub { font-size: .9rem; opacity: .9; margin-top: 4px; }
-.st-key-side-rail .state-card { background: rgba(255,255,255,.12); border: 0; color: #fff; }
-.st-key-side-rail .state-card .state-title { color: #fff; }
-.st-key-side-rail .state-row { border-bottom-color: rgba(255,255,255,.16); }
-.st-key-side-rail .state-row .k { color: rgba(255,255,255,.85); }
-.st-key-side-rail .state-row .v { color: #fff; }
-.st-key-side-rail .state-row .v .src, .st-key-side-rail .state-hint { color: rgba(255,255,255,.7); }
-.st-key-side-rail .state-row.filled .k::before { color: #6EE7A8; }
-.st-key-side-rail .state-row.empty .v, .st-key-side-rail .state-row.empty .k::before { color: rgba(255,255,255,.6); }
-.st-key-side-rail [data-testid="stExpander"] { background: rgba(255,255,255,.12); border: 0; }
-.st-key-side-rail [data-testid="stExpander"] summary, .st-key-side-rail [data-testid="stExpander"] summary * { color: #fff; }
-.st-key-side-rail [data-testid="stProgress"] p { color: #fff; }
-.st-key-cmp-card { background: #fff; border-radius: 18px; padding: 14px 16px; margin-top: 6px; overflow: hidden; min-width: 0; }
+/* שלושת החלקים הנפתחים (נתונים, השוואה, איך חושב): רקע לבן וטקסט כהה, כמו כרטיס ההשוואה */
+.st-key-side-rail [data-testid="stExpander"] { background: #fff; border: 0; border-radius: 18px; margin-top: 8px; }
+.st-key-side-rail [data-testid="stExpander"] summary, .st-key-side-rail [data-testid="stExpander"] summary * { color: var(--primary); font-weight: 700; }
+.st-key-side-rail [data-testid="stExpander"] .state-card { border: 0; padding: 0; }
+.st-key-cmp-card { background: #fff; border-radius: 18px; padding: 4px 0; margin-top: 6px; overflow: hidden; min-width: 0; }
 .st-key-cmp-card, .st-key-cmp-card * { min-width: 0; }
 .st-key-cmp-card .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .st-key-cmp-card .kpi { padding: 8px 10px; }
 .st-key-cmp-card .kpi-label { font-size: .75rem; }
 .st-key-cmp-card .kpi-value { font-size: 1.15rem; white-space: normal; overflow-wrap: anywhere; }
 .st-key-cmp-card .cmp-table { font-size: .85rem; }
-/* "איך חושב?" והתיבות הנפתחות בתוך כרטיס ההשוואה הלבן: טקסט כהה (ולא הלבן של הכרטיס הסגול) */
-.st-key-side-rail .st-key-cmp-card [data-testid="stExpander"] { background: var(--soft); border: 1px solid var(--line); }
-.st-key-side-rail .st-key-cmp-card [data-testid="stExpander"] summary, .st-key-side-rail .st-key-cmp-card [data-testid="stExpander"] summary * { color: var(--primary); font-weight: 700; }
 
 /* ---- מסך נציג: באנר סגול עם מונים, כרטיסי שאלות, ורשימת השאלות שנענו ---- */
-.rep-hero { display: flex; flex-wrap: wrap; gap: 18px; margin: 0 0 22px; direction: rtl; }
-.rep-hero .rep-banner { flex: 999 1 420px; display: flex; align-items: center; gap: 20px; color: #fff; padding: 22px 26px; border-radius: 24px;
+.rep-hero { margin: 0; direction: rtl; }
+.rep-hero .rep-banner { display: flex; align-items: center; gap: 20px; color: #fff; padding: 22px 26px; border-radius: 24px;
                         background: linear-gradient(170deg, #3E1768 0%, #6D2FA0 60%, #A8338F 100%); box-shadow: 0 22px 46px rgba(77,29,117,.3); }
 .rep-hero .rep-img { flex: none; width: 84px; height: 84px; border-radius: 50%; background: #fff; overflow: hidden; box-shadow: 0 0 0 6px rgba(255,255,255,.18); }
 .rep-hero .rep-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .rep-hero .rep-title { font-size: 1.4rem; font-weight: 800; line-height: 1.25; }
 .rep-hero .rep-sub { font-size: .92rem; opacity: .92; margin-top: 4px; line-height: 1.5; }
-.rep-hero .rep-stat { flex: 1 1 150px; display: flex; flex-direction: column; justify-content: center; background: #fff; border-radius: 24px;
-                      padding: 20px 22px; box-shadow: 0 14px 40px rgba(77,29,117,.10); border: 1px solid rgba(109,47,160,.08); }
-.rep-hero .rep-stat .lbl { font-size: .82rem; font-weight: 700; color: #6B6480; }
-.rep-hero .rep-stat .num { font-size: 2.6rem; font-weight: 800; line-height: 1.1; color: var(--primary); }
-.rep-hero .rep-stat.done .num { color: #1E7A4F; }
-[class*="st-key-card-q-"] { border-radius: 24px; padding: 22px 24px; border: 1px solid rgba(109,47,160,.08); box-shadow: 0 14px 40px rgba(77,29,117,.10); }
-[class*="st-key-card-q-"] .q-title { font-size: 1.25rem; color: #2B1450; }
-[class*="st-key-card-q-"] .quote { border: 0; background: #F6F1FB; border-radius: 6px 18px 18px 18px; padding: 14px 18px; line-height: 1.6; }
-[class*="st-key-card-q-"] .quote b { color: #4B1D75; }
-[class*="st-key-card-q-"] .q-chips { display: inline-block; padding: 5px 12px; border-radius: 999px; background: #FBF9FD; border: 1px solid rgba(109,47,160,.18); }
-[class*="st-key-card-q-"] [data-testid="stForm"] { border: 0; background: transparent; padding: 0; }
-[class*="st-key-card-q-"] input { border-radius: 12px; }
-[class*="st-key-card-q-"] [data-testid="stFormSubmitButton"] button { background: linear-gradient(135deg, #C2378C, #6D2FA0); border: 0; border-radius: 14px;
+/* שני הריבועים למעלה הם גם המתג בין שאלות פתוחות לשנענו (כפתורים בעיצוב ריבוע); הנבחר מודגש במסגרת סגולה */
+[class*="st-key-stat_"] button { width: 100%; min-height: 128px; flex-direction: column; justify-content: center; text-align: center;
+    background: #fff; border-radius: 24px; padding: 20px 22px; box-shadow: 0 14px 40px rgba(77,29,117,.10); border: 1px solid rgba(109,47,160,.08); }
+[class*="st-key-stat_"] button:hover { border-color: rgba(109,47,160,.4); }
+[class*="st-key-stat_"] button[kind="primary"] { border: 2px solid var(--primary); background: #fff; }
+[class*="st-key-stat_"] button p { color: #6B6480; font-size: .82rem; font-weight: 700; margin: 0; }
+[class*="st-key-stat_"] button p:last-child { font-size: 2.6rem; font-weight: 800; line-height: 1.1; color: var(--primary); }
+.st-key-stat_answered button p:last-child { color: #1E7A4F; }
+/* כרטיס שאלה: כרטיס לבן מעוגל שנפתח בלחיצה על הכותרת */
+[class*="st-key-card-"] [data-testid="stExpander"] { background: #fff; border-radius: 24px; margin-bottom: 12px;
+    box-shadow: 0 14px 40px rgba(77,29,117,.10); border: 1px solid rgba(109,47,160,.08); overflow: hidden; }
+[class*="st-key-card-"] [data-testid="stExpander"] summary { padding: 18px 24px; }
+[class*="st-key-card-"] [data-testid="stExpander"] summary, [class*="st-key-card-"] [data-testid="stExpander"] summary * { font-weight: 800; font-size: 1.05rem; color: #2B1450; }
+[class*="st-key-card-"] [data-testid="stExpander"] summary:hover { background: #FBF9FD; }
+[class*="st-key-card-"] [data-testid="stExpanderDetails"] { padding: 0 24px 22px; }
+[class*="st-key-card-"] .q-title { font-size: 1.25rem; color: #2B1450; }
+[class*="st-key-card-"] .quote { border: 0; background: #F6F1FB; border-radius: 6px 18px 18px 18px; padding: 14px 18px; line-height: 1.6; }
+[class*="st-key-card-"] .quote b { color: #4B1D75; }
+[class*="st-key-card-"] .q-chips { display: inline-block; padding: 5px 12px; border-radius: 999px; background: #FBF9FD; border: 1px solid rgba(109,47,160,.18); }
+[class*="st-key-card-"] [data-testid="stForm"] { border: 0; background: transparent; padding: 0; }
+[class*="st-key-card-"] input { border-radius: 12px; }
+[class*="st-key-card-"] [data-testid="stFormSubmitButton"] button { background: linear-gradient(135deg, #C2378C, #6D2FA0); border: 0; border-radius: 14px;
                     font-weight: 800; min-height: 3rem; padding: 0 2rem; box-shadow: 0 8px 18px rgba(109,47,160,.3); }
-[class*="st-key-card-q-"] [data-testid="stFormSubmitButton"] button, [class*="st-key-card-q-"] [data-testid="stFormSubmitButton"] button * { color: #fff; }
+[class*="st-key-card-"] [data-testid="stFormSubmitButton"] button, [class*="st-key-card-"] [data-testid="stFormSubmitButton"] button * { color: #fff; }
 .ans-row { background: #FBF9FD; border-radius: 14px; padding: 12px 14px; margin-bottom: 8px; border-bottom: 0; }
 [data-testid="stExpander"] { border-radius: 24px; box-shadow: 0 14px 40px rgba(77,29,117,.10); border: 1px solid rgba(109,47,160,.08); }
 </style>
@@ -794,16 +803,21 @@ def render_rail_header() -> None:
                 "<div class='rail-sub'>אני כאן כדי לחשב את הנטו שלך</div></div>", unsafe_allow_html=True)
 
 
-def rep_hero(open_count: int, answered_count: int) -> None:
-    """מסך נציג: באנר סגול עם הדמות הראשית והסבר, ושני מונים (שאלות פתוחות / נענו)."""
+def rep_hero(open_count: int, answered_count: int) -> str:
+    """מסך נציג: באנר סגול עם הדמות הראשית, ושני ריבועים (שאלות פתוחות / נענו) שהם גם מתג התצוגה. מחזיר את התצוגה שנבחרה."""
     image = _embedded_image(IMAGES_DIR, "bot-image", "", "CarBot")
-    st.markdown(
+    st.session_state.setdefault("rep_view", "open")
+    banner, open_col, done_col = st.columns([3, 1, 1], vertical_alignment="center")
+    banner.markdown(
         "<div class='rep-hero'><div class='rep-banner'>"
         f"<div class='rep-img'>{image}</div><div><div class='rep-title'>שאלות שהבוט לא יכול להשלים לבד</div>"
-        "<div class='rep-sub'>התשובה שלך חוזרת לשיחה של העובד מיד. המסך מתרענן אוטומטית.</div></div></div>"
-        f"<div class='rep-stat'><div class='lbl'>שאלות פתוחות</div><div class='num'>{open_count}</div></div>"
-        f"<div class='rep-stat done'><div class='lbl'>נענו</div><div class='num'>{answered_count}</div></div></div>",
+        "<div class='rep-sub'>התשובה שלך חוזרת לשיחה של העובד מיד. המסך מתרענן אוטומטית.</div></div></div></div>",
         unsafe_allow_html=True)
+    for col, view, label, count in ((open_col, "open", "שאלות פתוחות", open_count), (done_col, "answered", "נענו", answered_count)):
+        col.button(f"{label}\n\n{count}", key=f"stat_{view}", use_container_width=True,
+                   type="primary" if st.session_state["rep_view"] == view else "secondary",
+                   on_click=st.session_state.__setitem__, args=("rep_view", view))
+    return st.session_state["rep_view"]
 
 
 def render_state_card(state) -> None:
@@ -1032,7 +1046,7 @@ def render_history_sidebar(current_sid: str | None) -> None:
                     if st.button(f"{item['title']}\n\n{item['when']}", key=f"open_{session_id}", use_container_width=True,
                                  type="primary" if active else "secondary", help=item["preview"]):
                         _open_session(session_id)
-                    with st.popover("", icon=":material/more_horiz:"):
+                    with st.popover("", icon=":material/edit:"):
                         new_title = st.text_input("שם השיחה", value=item["title"], key=f"title_{session_id}")
                         if st.button("שמירת שם", key=f"save_{session_id}", use_container_width=True):
                             db.rename_session(session_id, owner, new_title)
@@ -1199,24 +1213,67 @@ def comparison_text(result: dict) -> str:
 
 def comparison_csv(result: dict) -> bytes:
     """טבלת ההשוואה כקובץ CSV שנפתח באקסל בעברית (UTF-8 עם BOM)."""
-    import csv
-    import io
-    out = io.StringIO()
-    writer = csv.writer(out)
-    writer.writerows(comparison_rows(result))
-    return out.getvalue().encode("utf-8-sig")
+    return _csv_bytes(comparison_rows(result))
 
 
-def _copy_button_html(text: str) -> str:
+def _copy_button_html(text: str, button_id: str = "copy-cmp", label: str = "העתקת ההשוואה") -> str:
     """כפתור "העתקה" שמעתיק את הטקסט ללוח (st.html עם JavaScript)."""
     payload = json.dumps(text).replace("</", "<\\/")
-    return ("<button id='copy-cmp' class='cmp-btn'>העתקת ההשוואה</button>"
-            "<script>(() => {const b = document.getElementById('copy-cmp'); if (!b) return;"
+    return (f"<button id='{button_id}' class='cmp-btn'>{label}</button>"
+            f"<script>(() => {{const b = document.getElementById('{button_id}'); if (!b) return;"
             f"const text = {payload};"
             "b.onclick = async () => { try { await navigator.clipboard.writeText(text); } catch (e) {"
             "const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t);"
             "t.select(); document.execCommand('copy'); t.remove(); }"
-            "b.textContent = 'הועתק ✓'; setTimeout(() => b.textContent = 'העתקת ההשוואה', 1500); };})();</script>")
+            f"b.textContent = 'הועתק ✓'; setTimeout(() => b.textContent = {json.dumps(label)}, 1500); }};}})();</script>")
+
+
+def render_copy_download(text: str, csv_bytes: bytes, key: str, copy_label: str, file_name: str) -> None:
+    """שורת "העתקה" + "הורדה (CSV)" בתחתית כל אחד מהחלקים (נתונים / השוואה / איך חושב). מוצגת רק בתוך החלק הפתוח."""
+    copy_col, download_col = st.columns(2)
+    with copy_col:
+        st.html(_copy_button_html(text, f"copy-{key}", copy_label), unsafe_allow_javascript=True)
+    download_col.download_button("הורדה (CSV)", csv_bytes, file_name=file_name, mime="text/csv",
+                                 use_container_width=True, key=f"download_{key}")
+
+
+def _csv_bytes(rows: list[list[str]]) -> bytes:
+    import csv
+    import io
+    out = io.StringIO()
+    csv.writer(out).writerows(rows)
+    return out.getvalue().encode("utf-8-sig")
+
+
+def state_text(state) -> str:
+    """הנתונים שנקלטו כטקסט להעתקה: שורה לכל נתון, ומקורו בסוגריים."""
+    sources = state_sources(state)
+    lines = ["הנתונים שנקלטו עד כה"]
+    for label, value in state_rows(state):
+        source = f" ({sources[label]})" if value is not None and label in sources else ""
+        lines.append(f"{label}: {'טרם הוזן' if value is None else value}{source}")
+    return "\n".join(lines)
+
+
+def state_csv(state) -> bytes:
+    sources = state_sources(state)
+    return _csv_bytes([["נתון", "ערך", "מקור"]] + [[label, "טרם הוזן" if value is None else str(value),
+                                                    sources.get(label, "") if value is not None else ""]
+                                                   for label, value in state_rows(state)])
+
+
+def calc_rows(result: dict) -> list[list[str]]:
+    """שורות "איך חושב?" כטקסט פשוט (להעתקה ולהורדה): [שלב, היום, חלופה, הכלל]."""
+    from data_store import get_rules
+    from explain_calc import breakdown
+    cells = lambda v: "-" if v is None else _money(v)
+    rows = [["שלב בחישוב", "היום", "חלופה", "הכלל או המקור"]]
+    for row in breakdown(result, get_rules()):
+        if row["key"] not in _ALWAYS_SHOWN and not row["today"] and not row["alt"]:
+            continue
+        rows.append([(f"{row['sign']} " if row["sign"] else "") + row["label"], cells(row["today"]), cells(row["alt"]),
+                     row["rule"] or ""])
+    return rows
 
 
 def typing_status_html(label: str) -> str:
@@ -1277,11 +1334,11 @@ def render_comparison(result: dict, stale: bool = False) -> None:
     st.markdown("**למה זה משתנה?**")
     show_markdown(result["explanation"].replace("\n", "  \n"))
     st.caption("ההערכה לפי כללי המדיניות ולוחות המס שבקובץ ההגדרות, ואינה תחליף לתלוש השכר.")
-    with st.expander("איך חושב?"):
-        st.markdown(calc_breakdown_html(result), unsafe_allow_html=True)
+    render_copy_download(comparison_text(result), comparison_csv(result), "comparison", "העתקת ההשוואה", "השוואת-נטו.csv")
 
-    copy_col, download_col = st.columns(2)
-    with copy_col:
-        st.html(_copy_button_html(comparison_text(result)), unsafe_allow_javascript=True)
-    download_col.download_button("הורדה (CSV)", comparison_csv(result), file_name="השוואת-נטו.csv", mime="text/csv",
-                                 use_container_width=True, key="download_comparison")
+
+def render_calc_breakdown(result: dict) -> None:
+    """תוכן "הצג איך חושב": הפירוט שורה אחרי שורה, עם העתקה והורדה."""
+    st.markdown(calc_breakdown_html(result), unsafe_allow_html=True)
+    rows = calc_rows(result)
+    render_copy_download("\n".join(" | ".join(r) for r in rows), _csv_bytes(rows), "calc", "העתקת הפירוט", "איך-חושב.csv")
