@@ -76,12 +76,6 @@ def strauss_logo_html(folder: str = IMAGES_DIR) -> str:
 
 
 @functools.lru_cache(maxsize=4)
-def banner_logo_html(folder: str = IMAGES_DIR) -> str:
-    """לוגו הבאנר: התמונה המשולבת של שטראוס ו-CarBot (images/logo-1-banner.jpg, חיתוך של logo-1.jpg). אין קובץ - מחרוזת ריקה."""
-    return _embedded_image(folder, "logo-1-banner", "cb-banner-img", "CarBot - יועץ הרכב של שטראוס")
-
-
-@functools.lru_cache(maxsize=4)
 def bot_icon_html(folder: str = IMAGES_DIR) -> str:
     """אייקון הלוגו: הרובוט מתמונת הלוגו (images/carbot-icon.png, נוצר ע"י scripts/make_logo_icon.py). אין - הרובוט המצויר."""
     return _embedded_image(folder, "carbot-icon", "cb-icon cb-icon-img", "CarBot") or BOT_ICON_SVG
@@ -103,8 +97,9 @@ BOT_ICON_SVG = (
 def _find_login_image() -> str | None:
     """תמונת מסך הכניסה: images/login-image.* ; אם אין - תמונת הבוט."""
     folder = os.path.join(os.path.dirname(BACKEND_DIR), "images")
-    for extension in ("jpg", "png", "jpeg", "webp"):
-        path = os.path.join(folder, f"login-image.{extension}")
+    for name, extension in (("login-image-cutout", "png"), ("login-image", "jpg"), ("login-image", "png"),
+                            ("login-image", "jpeg"), ("login-image", "webp")):      # הראשון: אותה תמונה בלי הרקע הלבן
+        path = os.path.join(folder, f"{name}.{extension}")
         if os.path.exists(path):
             return path
     return BOT_AVATAR if os.path.exists(BOT_AVATAR) else None
@@ -167,7 +162,7 @@ def show_markdown(text: str) -> None:
 
 CSS = """
 <style>
-:root { --primary:#7C3AA8; --accent:#C2378C; --ink:#2B2540; --muted:#6F6A80; --soft:#F6F0FA;
+:root { --primary:#6D2FA0; --accent:#C2378C; --ink:#2B2540; --muted:#6F6A80; --soft:#F6F0FA;
         --good:#1E8E5A; --bad:#C0392B; --line:rgba(43,37,64,.12); }
 html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-testid="stChatMessage"],
 [data-testid="stMarkdownContainer"], [data-testid="stExpander"], [data-testid="stForm"], .stTextInput,
@@ -200,11 +195,12 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-
 .carbot-logo .cb-strauss { height: 46px; width: auto; max-width: 120px; object-fit: contain; mix-blend-mode: multiply; border: 0 !important; box-shadow: none !important;
                            border-radius: 0 !important; }
 .carbot-logo .cb-sep { width: 2px; height: 36px; border-radius: 2px; background: linear-gradient(var(--primary), var(--accent)); opacity: .45; }
-.carbot-logo .cb-text { text-align: center; }
+.carbot-logo .cb-text { text-align: left; }
 .carbot-logo .cb-name { font-size: 1.9rem; font-weight: 900; letter-spacing: .3px; }
-.carbot-logo .cb-car, .carbot-logo .cb-bot { color: #74409F; -webkit-text-fill-color: #74409F; }
-.carbot-logo .cb-sub { font-size: .76rem; font-weight: 800; color: #2E1A5C; direction: rtl; text-shadow: none; margin-top: 1px; }
-.st-key-topbar .carbot-logo .cb-sub { color: #2E1A5C; }
+.carbot-logo .cb-car { color: #2B1450; -webkit-text-fill-color: #2B1450; }
+.carbot-logo .cb-bot { color: #C2378C; -webkit-text-fill-color: #C2378C; }
+.carbot-logo .cb-sub { font-size: .76rem; font-weight: 700; color: #6B6480; direction: rtl; text-shadow: none; margin-top: 3px; }
+.st-key-topbar .carbot-logo .cb-sub { color: #6B6480; }
 @media (max-width: 1250px) { .carbot-logo .cb-strauss { height: 34px; max-width: 90px; } .carbot-logo .cb-name { font-size: 1.6rem; } }
 @media (max-width: 1050px) { .carbot-logo .cb-strauss, .carbot-logo .cb-sep { display: none; } }
 /* מסכים בינוניים וצרים: הבאנר קומפקטי בשורה אחת (הלוגו מחליף את הכותרת), בלי שהעמודות יתפצלו לכמה שורות */
@@ -259,29 +255,20 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-
 .st-key-topbar button { background: rgba(255,255,255,.16); border: 0; color: #fff; border-radius: 999px; white-space: nowrap; }
 .st-key-topbar button:hover { background: rgba(255,255,255,.32); color: #fff; }
 .st-key-topbar .nav-pill.active { background: #fff; color: var(--primary); font-weight: 700; }
-/* באנר בהיר: רקע לבן (הלוגו מעוצב ללבן) ופס גרדיאנט סגול-ורוד בתחתית; הניווט והתפריט בסגול */
-.st-key-topbar { background: #fff; border-bottom: 0; border-radius: 0 0 20px 20px; box-shadow: 0 4px 18px rgba(80,20,110,.18); }
-.st-key-topbar::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 6px; border-radius: 0 0 20px 20px;
-                        background: linear-gradient(90deg, var(--accent), var(--primary)); }
+/* באנר: כרטיס לבן מעוגל שצף מעל הרקע; הניווט והתפריט בסגול */
+.st-key-topbar { top: 0; left: 0; right: 0; min-height: 86px; padding: 8px 32px; border-radius: 0 0 26px 26px;
+                 background: #fff; border: 0; border-bottom: 4px solid #6D2FA0; box-shadow: 0 10px 30px rgba(60,20,100,.18); }
 .st-key-topbar, .st-key-topbar * { color: var(--primary); }
 .st-key-topbar a, .st-key-topbar .nav-pill, .st-key-topbar button { background: var(--soft); color: var(--primary); }
 .st-key-topbar a:hover, .st-key-topbar button:hover { background: #EBDDF5; color: var(--primary); }
 .st-key-topbar .nav-pill.active { background: var(--primary); color: #fff; }
 .st-key-topbar .nav-pill.active * { color: #fff; }
 .st-key-user-menu [data-testid="stPopoverButton"], .st-key-user-menu [data-testid="stPopoverButton"] * { color: var(--primary); }
-.st-key-user-menu [data-testid="stPopoverButton"]:hover { background: rgba(124,58,168,.10) !important; }
-/* לוגו התמונה (logo-1) במרכז הבאנר, עם רקע עדין ופס צבעוני בתחתית */
-.st-key-topbar { min-height: 92px; padding-top: 10px; padding-bottom: 12px;
-                 background: linear-gradient(180deg, #fff 0%, #FBF7FE 100%); }
-.st-key-topbar::after { height: 7px; background: linear-gradient(90deg, #E0489E, #7C3AA8 50%, #2E86DE); }
-.carbot-logo .cb-banner-img { height: 70px; width: auto; max-width: 62vw; object-fit: contain; mix-blend-mode: multiply;
-                              border: 0 !important; box-shadow: none !important; border-radius: 0 !important; }
-.block-container { padding-top: 7.2rem; }
-@media (max-width: 1000px) { .carbot-logo .cb-banner-img { height: 56px; } }
+.st-key-user-menu [data-testid="stPopoverButton"]:hover { background: rgba(109,47,160,.10) !important; }
+.block-container { padding-top: 7rem; }
 @media (max-width: 700px) {
-  .st-key-topbar { min-height: 70px; padding-top: 6px; padding-bottom: 8px; }
-  .carbot-logo .cb-banner-img { height: 42px; }
-  .block-container { padding-top: 5.4rem; }
+  .st-key-topbar { min-height: 66px; padding: 6px 12px; border-radius: 0 0 18px 18px; }
+  .block-container { padding-top: 5.2rem; }
 }
 
 /* כפתור העתקה מתחת לכל בועת הודעה: הסוכן - בצד שמאל, העובדת - בצד ימין */
@@ -309,27 +296,40 @@ div.st-key-chatbox-btn.st-key-chatbox-btn { height: calc(100vh - 440px) !importa
 div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-chatbox-picker) { flex: 0 0 auto !important; height: auto !important; }
 
 /* כשההשוואה ארוכה והדף גולל, עמודת השיחה נשארת במקומה (דבוקה מתחת לבאנר) ולא נגללת למעלה */
-[data-testid="stColumn"]:has(.st-key-chatbox, .st-key-chatbox-btn, .st-key-chatbox-picker) { align-self: flex-start; position: sticky; top: 6.9rem; }
+[data-testid="stColumn"]:has(.st-key-chatbox, .st-key-chatbox-btn, .st-key-chatbox-picker) { align-self: flex-start; position: sticky; top: 7.6rem; }
 
 /* תיבת הכתיבה באותו רוחב כמו עמודת השיחה (3 מתוך 5, פחות הרווח בין העמודות), צמודה לצד הימני */
 [data-testid="stBottomBlockContainer"] [data-testid="stChatInput"] { width: calc((100% - 2rem) * 0.6); margin-right: 0; margin-left: auto; }
 
-/* מסך הכניסה: כרטיס טופס, והתמונה צמודה לתחתית המסך (בלי שוליים) */
-.st-key-logincard { background: #fff; border: 1px solid #E6DDF0; border-radius: 18px; padding: 26px 24px;
-                    box-shadow: 0 8px 24px rgba(0,0,0,.07); }
-.st-key-logincard h3 { margin-top: 0; }
-.st-key-logincard { position: relative; z-index: 3; }      /* הכרטיס מעל שולי התמונה (רקע לבן) */
-.st-key-loginimage { position: fixed; left: 8vw; bottom: 0; width: auto; margin: 0; padding: 0; line-height: 0; z-index: 1; }
+/* מסך הכניסה: כרטיס טופס קטן, ותמונה גדולה בתוך עיגול (בצד שמאל) */
+.st-key-logincard { border: 3px solid transparent; border-radius: 24px; padding: 22px 24px;
+                    background: linear-gradient(#fff, #fff) padding-box, linear-gradient(135deg, #A82B7C, #4F1F85) border-box;
+                    box-shadow: 0 20px 50px rgba(60,20,100,.2); max-width: 360px; margin-inline: auto; }
+.st-key-logincard h3 { margin-top: 0; color: #241046; font-weight: 800; }
+.st-key-logincard { position: relative; z-index: 3; }      /* הכרטיס מעל העיגול */
+.st-key-logincard [data-testid="stFormSubmitButton"] button { background: linear-gradient(135deg, #A82B7C, #4F1F85); border: 0;
+                    font-weight: 800; border-radius: 14px; min-height: 2.9rem; box-shadow: 0 10px 22px rgba(79,31,133,.4); }
+.st-key-logincard [data-testid="stFormSubmitButton"] button, .st-key-logincard [data-testid="stFormSubmitButton"] button * { color: #fff; }
+.st-key-loginimage { position: relative; width: 100%; max-width: calc(100vh - 215px); aspect-ratio: 1; margin: 0 auto; line-height: 0; }
+.st-key-loginimage::before { content: ""; position: absolute; inset: 0; border-radius: 50%;
+                             background: radial-gradient(circle at 35% 30%, #fff 0%, #DDC8F0 55%, #EDC3DC 100%);
+                             box-shadow: 0 24px 60px rgba(60,20,100,.26); }
+.st-key-loginimage::after { content: "נטו היום מול נטו בחלופה"; position: absolute; top: 7%; right: 0; background: #fff; border-radius: 16px;
+                            padding: 9px 15px; box-shadow: 0 10px 26px rgba(60,20,100,.22); font-weight: 700; font-size: .9rem;
+                            color: #3F1A6B; line-height: 1.3; direction: rtl; }
 .st-key-loginimage, .st-key-loginimage * { margin: 0 !important; padding: 0 !important; }
-.st-key-loginimage img { display: block; height: calc(100vh - 78px); width: auto !important; max-width: 52vw;
-                         object-fit: contain; object-position: left bottom; border-radius: 0; }
-@media (max-width: 900px) {
-  .st-key-loginimage { position: static; }
-  .st-key-loginimage img { height: auto; width: 100% !important; max-width: 100%; }
-}
+.st-key-loginimage *:not(img) { position: static !important; }     /* העטיפות של Streamlit לא יהפכו לנקודת העיגון של התמונה */
+.st-key-loginimage [data-testid="stElementToolbar"] { display: none !important; }
+.st-key-loginimage img { position: absolute; inset: 0; width: 100% !important; height: 100% !important; object-fit: contain;
+                         border-radius: 0; }
+.st-key-logincard [data-testid="stForm"] { border: 0; background: transparent; padding: 0; }
 
 /* סרגל הצד: רשימת שיחות (כפתור לכל שיחה, השיחה הפעילה בסגול) ושורת איקונים בתחתית */
 .st-key-chat-list button { justify-content: flex-start; text-align: right; }
+/* כפתורי סגירה / פתיחה של פאנל הנתונים וההשוואה */
+.st-key-side-rail { position: relative; }
+.st-key-close_side button, .st-key-open_side button { border-radius: 18px; background: var(--soft); border: 1px solid var(--line); color: var(--primary);
+    font-weight: 600; }
 .st-key-chat-list button p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
 /* איקון ⋯ בתוך כפתור השיחה, בקצה השמאלי שלו */
 [class*="st-key-chatrow_"] { position: relative; }
@@ -343,18 +343,25 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 .st-key-chat-list button p { padding-left: 34px; }
 
 /* פאנל הצד: "הנתונים שנקלטו עד כה" */
-[data-testid="stSidebarContent"] { padding-top: 8.6rem; position: relative; }
+[data-testid="stSidebarContent"] { padding-top: 9.6rem; position: relative; }
 /* כפתור סגירת הסרגל (נוצר ב-JS) בראש הסרגל, מעל "שיחה חדשה" */
-#close-sidebar-btn { position: absolute; top: 6.2rem; left: 1rem; width: 30px; height: 30px; border: 0; padding: 0;
+#close-sidebar-btn { position: absolute; top: 7.2rem; left: 1rem; width: 30px; height: 30px; border: 0; padding: 0;
     border-radius: 50%; background: var(--soft); color: var(--primary); font-weight: 700; font-size: 1rem; cursor: pointer; }
 #close-sidebar-btn:hover { background: #EBDDF5; }
 /* סרגל צר יחסית (שם ארוך יורד לשורה שנייה במקום להיחתך); נפתח ונסגר בכפתור הצף */
 [data-testid="stSidebar"][aria-expanded="true"] { width: 17rem !important; min-width: 17rem !important; }
 .st-key-chat-list button p { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.35; }
+/* שורת שיחה: השם מימין והתאריך היחסי ("היום", "אתמול") משמאל, באפור קטן */
+.st-key-chat-list button [data-testid="stMarkdownContainer"] { display: flex; flex-direction: row; justify-content: space-between;
+    align-items: baseline; gap: 10px; width: 100%; padding-left: 34px; }      /* מקום לאיקון התפריט (⋯) משמאל */
+.st-key-chat-list button [data-testid="stMarkdownContainer"] p { padding-left: 0; }
+.st-key-chat-list button [data-testid="stMarkdownContainer"] p:last-child { flex: 0 0 auto; width: auto; padding-left: 0;
+    font-size: .78rem; font-weight: 400; color: var(--muted); order: 2; }
+[class*="st-key-chatrow_a_"] button [data-testid="stMarkdownContainer"] p:last-child { color: rgba(255,255,255,.85); }
 [data-testid="stSidebarHeader"] { display: none; }
 /* כפתור פתיחה/סגירה של הסרגל (נוצר ב-JS, תמיד מוצג; המיקום נקבע ב-JS לפי מצב הסרגל). הכפתור המקורי של Streamlit
    נמצא בתוך ה-header המוסתר */
-#open-sidebar-fab { position: fixed; right: 12px; top: 84px; z-index: 1000010; width: 38px; height: 38px; border-radius: 50%;
+#open-sidebar-fab { position: fixed; right: 12px; top: 104px; z-index: 1000010; width: 38px; height: 38px; border-radius: 50%;
     border: 0; background: var(--primary); color: #fff; font-size: 1.2rem; cursor: pointer; display: flex;
     align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(124,58,168,.4); padding: 0; }
 /* סרגל סגור: מסתירים את התוכן שלו לגמרי (אחרת נשארים שרידים של הכפתורים באמצע המסך) */
@@ -367,14 +374,15 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 .state-row .k { color: var(--muted); white-space: nowrap; }
 .state-row .v { font-weight: 700; color: var(--ink); text-align: left; unicode-bidi: plaintext; }
 .state-row .v .src { display: block; font-weight: 400; font-size: .72rem; color: var(--muted); text-align: left; }
-.calc-table { width: 100%; border-collapse: collapse; font-size: .85rem; direction: rtl; }
-.calc-table th { text-align: right; color: var(--muted); font-weight: 600; border-bottom: 2px solid var(--line); padding: 6px 8px; }
-.calc-table td { border-bottom: 1px solid var(--line); padding: 6px 8px; vertical-align: top; }
+.calc-table { width: 100%; border-collapse: collapse; font-size: 1rem; direction: rtl; font-family: inherit; }
+.calc-table th { text-align: right; color: var(--muted); font-weight: 600; font-size: .9rem; border-bottom: 2px solid var(--line); padding: 8px 10px; }
+.calc-table td { border-bottom: 1px solid var(--line); padding: 8px 10px; vertical-align: top; line-height: 1.5; }
+.calc-table th:first-child, .calc-table td:first-child { width: 60%; }
 .calc-table td.num { white-space: nowrap; text-align: left; direction: ltr; font-weight: 600; }
-.calc-table .rule { color: var(--muted); font-size: .72rem; font-weight: 400; margin-top: 2px; direction: rtl; unicode-bidi: plaintext; }
-.calc-table tr.total .rule { color: var(--primary); }
+.calc-table .rule { color: var(--muted); font-size: .88rem; font-weight: 400; margin-top: 2px; direction: rtl; }
 .calc-table tr.total td { font-weight: 800; background: var(--soft); color: var(--primary); }
-.calc-check { margin-top: 8px; font-size: .85rem; color: var(--good); font-weight: 600; }
+.calc-table tr.total .rule { color: var(--primary); font-weight: 400; }
+.calc-check { margin-top: 10px; font-size: .95rem; color: var(--good); font-weight: 600; }
 .state-row.empty .v { font-weight: 400; font-style: italic; color: #9A95A8; }
 .state-row.filled .k::before { content: "✓ "; color: var(--good); font-weight: 700; }
 .state-row.empty .k::before { content: "○ "; color: #B7B2C4; }
@@ -453,6 +461,99 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 [data-testid="stExpander"] { border-radius:14px; border:1px solid var(--line); background:#fff; }
 .st-key-consent-card { background:#fff; border-radius:18px !important; padding:24px 24px 18px !important;
                        box-shadow:0 10px 28px rgba(43,37,64,.08); border-top:5px solid var(--primary) !important; }
+/* ---- מראה כללי: רקע לבנדר, כרטיס שיחה, בועות, סרגל צד וכרטיס הצד הסגול ---- */
+[data-testid="stApp"], [data-testid="stAppViewContainer"] { background: linear-gradient(180deg, #EFE6F8 0%, #F7F3FB 340px, #F7F3FB 100%); }
+div.st-key-chatbox.st-key-chatbox, div.st-key-chatbox-btn.st-key-chatbox-btn, div.st-key-chatbox-picker.st-key-chatbox-picker {
+    background: #fff; border-radius: 24px; box-shadow: 0 14px 40px rgba(77,29,117,.10); border: 1px solid rgba(109,47,160,.08);
+    padding: 14px 16px; }
+/* הבועה היא רק הטקסט; התמונה (האווטאר) עומדת מחוץ לבועה, בצד */
+[data-testid="stChatMessage"] { background: transparent; border: 0; box-shadow: none; padding: 0; border-radius: 0; gap: .8rem; align-items: flex-start; }
+[data-testid="stChatMessageContent"] { flex: 0 1 auto !important; width: auto; background: #F6F1FB; border-radius: 20px 6px 20px 20px; padding: .8rem 1.1rem; }
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) { background: transparent; border: 0; box-shadow: none; }
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"] {
+    background: linear-gradient(135deg, #6D2FA0, #8A3FB8); border-radius: 6px 20px 20px 20px; box-shadow: 0 6px 16px rgba(109,47,160,.28); }
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"] * { color: #fff; }
+[data-testid="stChatMessage"] img[alt$="avatar"] { width: 3.4rem; height: 3.4rem; min-width: 3.4rem; border-radius: 50%; object-fit: cover; mix-blend-mode: multiply; }
+[data-testid="stChatMessageAvatarAssistant"] { background: #F6F1FB !important; border-radius: 50% !important; overflow: hidden; width: 3.4rem; height: 3.4rem; min-width: 3.4rem; }
+[data-testid="stChatMessageAvatarUser"] { background: linear-gradient(135deg, #6D2FA0, #8A3FB8) !important; border-radius: 50% !important; }
+/* שורת העובד: התמונה בצד שמאל והבועה צמודה אליה (בלי רווח באמצע) */
+[data-testid="stChatMessage"] { justify-content: flex-start !important; }
+[data-testid="stChatMessage"] > * { margin: 0 !important; }
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) { direction: ltr; flex-direction: row; justify-content: flex-start !important; width: fit-content; margin-inline-start: auto !important; }
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"] { direction: rtl; text-align: right; }
+[data-testid="stBottom"], [data-testid="stBottom"] > div, [data-testid="stBottomBlockContainer"] { background: transparent !important; }
+/* סרגל הצד כרטיס לבן מעוגל שצף מתחת לבאנר (כמו "השיחות שלי" בעיצוב) */
+[data-testid="stSidebar"], [data-testid="stSidebar"] > div:first-child { background: transparent; box-shadow: none; border: 0; }
+[data-testid="stSidebarContent"] { background: #fff !important; margin: 6.8rem 10px 16px; height: calc(100vh - 6.8rem - 16px);
+    border-radius: 24px; box-shadow: 0 14px 40px rgba(77,29,117,.12); border: 1px solid rgba(109,47,160,.08);
+    padding: 3.4rem 14px 14px !important; overflow-y: auto; }
+#close-sidebar-btn { top: .9rem !important; }
+/* תיבת הכתיבה: שדה מעוגל עם מסגרת סגולה, כפתור שליחה בגרדיאנט וכפתור הצירוף (+) בלבנדר */
+[data-testid="stChatInput"] { border: 1.5px solid rgba(109,47,160,.25); border-radius: 18px; background: #fff;
+    box-shadow: 0 4px 14px rgba(77,29,117,.07); }
+[data-testid="stChatInput"] [data-testid="stChatInputSubmitButton"] { background: linear-gradient(135deg, #C2378C, #6D2FA0);
+    color: #fff; border-radius: 14px; }
+[data-testid="stChatInput"] [data-testid="stChatInputSubmitButton"] svg { color: #fff; fill: #fff; }
+[data-testid="stChatInput"] button:not([data-testid="stChatInputSubmitButton"]) { background: #F0E6F8; color: var(--primary); border-radius: 14px; }
+.st-key-new_chat_button button { background: linear-gradient(135deg, #C2378C, #6D2FA0); border: 0; border-radius: 14px; font-weight: 800;
+                                 min-height: 2.9rem; box-shadow: 0 8px 18px rgba(109,47,160,.3); }
+.st-key-new_chat_button button, .st-key-new_chat_button button * { color: #fff; }
+.st-key-side-rail { background: linear-gradient(170deg, #3E1768 0%, #6D2FA0 60%, #A8338F 100%); border-radius: 24px; padding: 22px;
+                    box-shadow: 0 22px 46px rgba(77,29,117,.36); }
+.st-key-side-rail h3, .st-key-side-rail h2 { color: #fff; }
+.rail-head { text-align: center; color: #fff; margin: 4px 0 14px; }
+.rail-head .rail-img { width: 150px; height: 150px; border-radius: 50%; background: #fff; overflow: hidden; margin: 0 auto 12px;
+                       box-shadow: 0 18px 40px rgba(0,0,0,.3), 0 0 0 10px rgba(255,255,255,.15); }
+.rail-head .rail-img img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 0; }
+.rail-head .rail-hello { font-size: 1.4rem; font-weight: 800; }
+.rail-head .rail-sub { font-size: .9rem; opacity: .9; margin-top: 4px; }
+.st-key-side-rail .state-card { background: rgba(255,255,255,.12); border: 0; color: #fff; }
+.st-key-side-rail .state-card .state-title { color: #fff; }
+.st-key-side-rail .state-row { border-bottom-color: rgba(255,255,255,.16); }
+.st-key-side-rail .state-row .k { color: rgba(255,255,255,.85); }
+.st-key-side-rail .state-row .v { color: #fff; }
+.st-key-side-rail .state-row .v .src, .st-key-side-rail .state-hint { color: rgba(255,255,255,.7); }
+.st-key-side-rail .state-row.filled .k::before { color: #6EE7A8; }
+.st-key-side-rail .state-row.empty .v, .st-key-side-rail .state-row.empty .k::before { color: rgba(255,255,255,.6); }
+.st-key-side-rail [data-testid="stExpander"] { background: rgba(255,255,255,.12); border: 0; }
+.st-key-side-rail [data-testid="stExpander"] summary, .st-key-side-rail [data-testid="stExpander"] summary * { color: #fff; }
+.st-key-side-rail [data-testid="stProgress"] p { color: #fff; }
+.st-key-cmp-card { background: #fff; border-radius: 18px; padding: 14px 16px; margin-top: 6px; overflow: hidden; min-width: 0; }
+.st-key-cmp-card, .st-key-cmp-card * { min-width: 0; }
+.st-key-cmp-card .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.st-key-cmp-card .kpi { padding: 8px 10px; }
+.st-key-cmp-card .kpi-label { font-size: .75rem; }
+.st-key-cmp-card .kpi-value { font-size: 1.15rem; white-space: normal; overflow-wrap: anywhere; }
+.st-key-cmp-card .cmp-table { font-size: .85rem; }
+/* "איך חושב?" והתיבות הנפתחות בתוך כרטיס ההשוואה הלבן: טקסט כהה (ולא הלבן של הכרטיס הסגול) */
+.st-key-side-rail .st-key-cmp-card [data-testid="stExpander"] { background: var(--soft); border: 1px solid var(--line); }
+.st-key-side-rail .st-key-cmp-card [data-testid="stExpander"] summary, .st-key-side-rail .st-key-cmp-card [data-testid="stExpander"] summary * { color: var(--primary); font-weight: 700; }
+
+/* ---- מסך נציג: באנר סגול עם מונים, כרטיסי שאלות, ורשימת השאלות שנענו ---- */
+.rep-hero { display: flex; flex-wrap: wrap; gap: 18px; margin: 0 0 22px; direction: rtl; }
+.rep-hero .rep-banner { flex: 999 1 420px; display: flex; align-items: center; gap: 20px; color: #fff; padding: 22px 26px; border-radius: 24px;
+                        background: linear-gradient(170deg, #3E1768 0%, #6D2FA0 60%, #A8338F 100%); box-shadow: 0 22px 46px rgba(77,29,117,.3); }
+.rep-hero .rep-img { flex: none; width: 84px; height: 84px; border-radius: 50%; background: #fff; overflow: hidden; box-shadow: 0 0 0 6px rgba(255,255,255,.18); }
+.rep-hero .rep-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rep-hero .rep-title { font-size: 1.4rem; font-weight: 800; line-height: 1.25; }
+.rep-hero .rep-sub { font-size: .92rem; opacity: .92; margin-top: 4px; line-height: 1.5; }
+.rep-hero .rep-stat { flex: 1 1 150px; display: flex; flex-direction: column; justify-content: center; background: #fff; border-radius: 24px;
+                      padding: 20px 22px; box-shadow: 0 14px 40px rgba(77,29,117,.10); border: 1px solid rgba(109,47,160,.08); }
+.rep-hero .rep-stat .lbl { font-size: .82rem; font-weight: 700; color: #6B6480; }
+.rep-hero .rep-stat .num { font-size: 2.6rem; font-weight: 800; line-height: 1.1; color: var(--primary); }
+.rep-hero .rep-stat.done .num { color: #1E7A4F; }
+[class*="st-key-card-q-"] { border-radius: 24px; padding: 22px 24px; border: 1px solid rgba(109,47,160,.08); box-shadow: 0 14px 40px rgba(77,29,117,.10); }
+[class*="st-key-card-q-"] .q-title { font-size: 1.25rem; color: #2B1450; }
+[class*="st-key-card-q-"] .quote { border: 0; background: #F6F1FB; border-radius: 6px 18px 18px 18px; padding: 14px 18px; line-height: 1.6; }
+[class*="st-key-card-q-"] .quote b { color: #4B1D75; }
+[class*="st-key-card-q-"] .q-chips { display: inline-block; padding: 5px 12px; border-radius: 999px; background: #FBF9FD; border: 1px solid rgba(109,47,160,.18); }
+[class*="st-key-card-q-"] [data-testid="stForm"] { border: 0; background: transparent; padding: 0; }
+[class*="st-key-card-q-"] input { border-radius: 12px; }
+[class*="st-key-card-q-"] [data-testid="stFormSubmitButton"] button { background: linear-gradient(135deg, #C2378C, #6D2FA0); border: 0; border-radius: 14px;
+                    font-weight: 800; min-height: 3rem; padding: 0 2rem; box-shadow: 0 8px 18px rgba(109,47,160,.3); }
+[class*="st-key-card-q-"] [data-testid="stFormSubmitButton"] button, [class*="st-key-card-q-"] [data-testid="stFormSubmitButton"] button * { color: #fff; }
+.ans-row { background: #FBF9FD; border-radius: 14px; padding: 12px 14px; margin-bottom: 8px; border-bottom: 0; }
+[data-testid="stExpander"] { border-radius: 24px; box-shadow: 0 14px 40px rgba(77,29,117,.10); border: 1px solid rgba(109,47,160,.08); }
 </style>
 """
 
@@ -560,12 +661,9 @@ def topbar(pages: list, current, user: dict | None = None) -> None:
     pages - דפי st.navigation המותרים; current - הדף הפעיל (מסומן בלבן, ולא כקישור).
     כשמשתמש מחובר: כפתור "יציאה". הקיבוע נעשה ב-CSS לפי המפתח "topbar"."""
     with st.container(key="topbar"):
-        logo = banner_logo_html()
-        if not logo:                                 # אין תמונת לוגו: הלוגו המורכב מאייקון וטקסט
-            logo = (f"{strauss_logo_html()}{bot_icon_html()}<div class='cb-text'>"
+        st.markdown(f"<div class='carbot-logo'>{strauss_logo_html()}{bot_icon_html()}<div class='cb-text'>"
                     "<div class='cb-name'><span class='cb-car'>Car</span><span class='cb-bot'>Bot</span></div>"
-                    "<div class='cb-sub'>יועץ הרכב של שטראוס</div></div>")
-        st.markdown(f"<div class='carbot-logo'>{logo}</div>", unsafe_allow_html=True)
+                    "<div class='cb-sub'>יועץ הרכב של שטראוס</div></div></div>", unsafe_allow_html=True)
         _, nav = st.columns([6.6, 3.4], vertical_alignment="center")      # העמודה הימנית ריקה: הלוגו במרכז הוא הכותרת
         with nav:
             if not pages:                            # מסך הכניסה והמשתמשים המחוברים: הבאנר בלי כפתורי ניווט
@@ -684,6 +782,28 @@ def state_card_html(state) -> str:
     if state.waiting_for_representative:
         note = "<div class='state-hint'>⏳ ממתין לתשובת נציג התחבורה</div>"
     return f"<div class='state-card'><div class='state-title'>הנתונים שנקלטו עד כה</div>{''.join(rows)}{note}</div>"
+
+
+def render_rail_header() -> None:
+    """ראש כרטיס הצד: הדמות הראשית בעיגול, וברכה בשם המשתמש (כשידוע)."""
+    user = st.session_state.get("user") or {}
+    name = (user.get("display_name") or "").strip().split(" ")[0] if user.get("role") != "both" else ""
+    image = _embedded_image(IMAGES_DIR, "bot-image", "", "CarBot")
+    hello = f"שלום {html.escape(name)}" if name else "שלום"
+    st.markdown(f"<div class='rail-head'><div class='rail-img'>{image}</div><div class='rail-hello'>{hello}</div>"
+                "<div class='rail-sub'>אני כאן כדי לחשב את הנטו שלך</div></div>", unsafe_allow_html=True)
+
+
+def rep_hero(open_count: int, answered_count: int) -> None:
+    """מסך נציג: באנר סגול עם הדמות הראשית והסבר, ושני מונים (שאלות פתוחות / נענו)."""
+    image = _embedded_image(IMAGES_DIR, "bot-image", "", "CarBot")
+    st.markdown(
+        "<div class='rep-hero'><div class='rep-banner'>"
+        f"<div class='rep-img'>{image}</div><div><div class='rep-title'>שאלות שהבוט לא יכול להשלים לבד</div>"
+        "<div class='rep-sub'>התשובה שלך חוזרת לשיחה של העובד מיד. המסך מתרענן אוטומטית.</div></div></div>"
+        f"<div class='rep-stat'><div class='lbl'>שאלות פתוחות</div><div class='num'>{open_count}</div></div>"
+        f"<div class='rep-stat done'><div class='lbl'>נענו</div><div class='num'>{answered_count}</div></div></div>",
+        unsafe_allow_html=True)
 
 
 def render_state_card(state) -> None:
@@ -835,12 +955,13 @@ def render_login() -> None:
     """מסך כניסה (שם משתמש וסיסמה): באנר, כרטיס עם הטופס ותמונה. אחרי כניסה מוצלחת המשתמש נשמר בסשן ובעוגייה."""
     import auth
     import db
-    st.markdown("<style>[data-testid='stSidebar'], [data-testid='stSidebarCollapsedControl'] { display: none; }</style>", unsafe_allow_html=True)
-    form_col, image_col = st.columns([0.7, 1.3], gap="large", vertical_alignment="center")
+    st.markdown("<style>[data-testid='stSidebar'], [data-testid='stSidebarCollapsedControl'] { display: none; }"
+                ".block-container { padding-top: 6rem !important; padding-bottom: 0 !important; }</style>", unsafe_allow_html=True)
+    _, form_col, image_col, _ = st.columns([0.2, 0.8, 1.4, 0.2], gap="large", vertical_alignment="center")
     with form_col:
         with st.container(key="logincard"):
-            st.markdown("### כניסה למערכת")
-            st.caption("היכנסו עם שם המשתמש והסיסמה שקיבלתם.")
+            st.markdown("### ברוך הבא")
+            st.caption("בוא נבדוק יחד מה יקרה לשכר הנטו שלך כשמחליפים רכב.")
             with st.form("login", border=False):
                 default_user, default_password = login_prefill()
                 username = st.text_input("שם משתמש", value=default_user, key="login_username")
@@ -871,7 +992,7 @@ def _open_session(session_id: str) -> None:
     st.rerun()
 
 
-def render_history_sidebar(current_sid: str | None, show_data_toggle: bool = False) -> None:
+def render_history_sidebar(current_sid: str | None) -> None:
     """סרגל הצד של העובד, כמו בצ'אט מוכר: שיחה חדשה, והיסטוריית השיחות - פתיחה, שינוי שם ומחיקה (עם אישור)."""
     import db
     owner = _owner_for_sessions()
@@ -879,10 +1000,6 @@ def render_history_sidebar(current_sid: str | None, show_data_toggle: bool = Fal
         if st.button("שיחה חדשה", icon=":material/add:", key="new_chat_button", use_container_width=True):
             new_session()
             _open_session(st.session_state["sid"])
-        if show_data_toggle:                       # מתג "הנתונים שנקלטו" - מתחת לכפתור "שיחה חדשה"
-            st.toggle("הצג את הנתונים שנקלטו בצד", key="show_data")
-            if current_sid and db.load_state(current_sid).last_result:      # יש תוצאה: מתג ההשוואה מתחת למתג הנתונים
-                st.toggle("הצג השוואה מפורטת בצד", key="show_comparison")
         if not owner:                              # התחברות כבויה (פיתוח מקומי): אין היסטוריה אישית
             return
         pending = st.session_state.get("confirm_delete")
@@ -912,7 +1029,7 @@ def render_history_sidebar(current_sid: str | None, show_data_toggle: bool = Fal
                 active = session_id == current_sid
                 # שורה אחת: כפתור השיחה, ואיקון התפריט (⋯) מוטבע בתוכו (ממוקם ב-CSS מעל קצה הכפתור)
                 with st.container(key=f"chatrow_{'a' if active else 'n'}_{session_id}"):
-                    if st.button(item["title"], key=f"open_{session_id}", use_container_width=True,
+                    if st.button(f"{item['title']}\n\n{item['when']}", key=f"open_{session_id}", use_container_width=True,
                                  type="primary" if active else "secondary", help=item["preview"]):
                         _open_session(session_id)
                     with st.popover("", icon=":material/more_horiz:"):
@@ -1127,10 +1244,11 @@ def calc_breakdown_html(result: dict) -> str:
     verdict = check(result)
     note = ""
     if verdict["ok"]:
-        note = ("<div class='calc-check'>✓ השורות מסתכמות לנטו המוצג (כל שורה מעוגלת לשקל, ולכן ייתכנו הפרשי עיגול של כמה שקלים)</div>")
+        note = ("<div class='calc-check'>✓ השורות מסתכמות לנטו המוצג (כל שורה מעוגלת לשקל, ולכן ייתכנו הפרשי עיגול של כמה שקלים)</div>"
+                "<div class='cmp-note'>הכללים והערכים נקראים מקובץ ההגדרות של המערכת.</div>")
     elif verdict["ok"] is None:
         note = "<div class='cmp-note'>הפירוט המלא יופיע אחרי חישוב מחדש של ההשוואה.</div>"
-    head = "<tr><th>שלב בחישוב (ומתחתיו הכלל / המקור)</th><th>היום</th><th>החלופה</th></tr>"
+    head = "<tr><th>שלב בחישוב (ומתחתיו הכלל או המקור)</th><th>היום</th><th>החלופה</th></tr>"
     return f"<table class='calc-table'><thead>{head}</thead><tbody>{''.join(body)}</tbody></table>{note}"
 
 

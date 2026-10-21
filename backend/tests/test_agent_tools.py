@@ -724,8 +724,9 @@ def test_breakdown_rows_sum_to_the_net_and_cite_the_rules():
     assert check(result)["ok"] is True                       # הפירוט מסתכם לנטו (עד עיגול)
     rows = {r["key"]: r for r in breakdown(result, get_rules())}
     assert rows["net"]["today"] == result["net_today"] and rows["net"]["alt"] == result["net_alternative"]
-    assert "netMethod.creditPointValue" in rows["credit_points_value"]["rule"]      # כל שורה מצביעה על הכלל
-    assert "netMethod.brackets" in rows["tax_before_credits"]["rule"]
+    assert "242" in rows["credit_points_value"]["rule"]            # כל שורה מצביעה על הכלל (בעברית) עם הערך מהקובץ
+    assert "מדרגות" in rows["tax_before_credits"]["rule"]
+    assert not any(ch.isascii() and ch.isalpha() for r in rows.values() for ch in r["rule"] + r["label"])   # הכול בעברית
 
 
 def test_data_sources_are_tracked_per_field():

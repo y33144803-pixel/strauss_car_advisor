@@ -15,44 +15,50 @@ def _brackets_text(brackets: list) -> str:
     return " · ".join(parts)
 
 
-def _rule(path: str, value) -> str:
-    return f"rules_config.json › {path} = {value}"
+def _pct(rate: float) -> str:
+    return f"{rate * 100:g}%"
 
 
 def breakdown(result: dict, rules: dict) -> list[dict]:
-    """שורות הפירוק: {label, today, alt, rule}. ערך None = לא רלוונטי / לא נשמר בחישוב ישן (חישוב מחדש ימלא אותו)."""
+    """שורות הפירוק: {key, label, today, alt, rule, sign}. הכלל מנוסח בעברית, והערכים נלקחים מקובץ ההגדרות (rules_config.json).
+    ערך None = לא נשמר בחישוב ישן (חישוב מחדש ימלא אותו)."""
     t, a = result["today"], result["alternative"]
     m = rules["netMethod"]
     waiver, electric = rules["waiver"], rules["electric"]
+    ni, health, pc = m["nationalInsurance"], m["health"], m["pensionCredit"]
+    base_text = "מהשכר הכולל (ברוטו)" if m["contributionsBase"] == "gross" else "מהשכר הבסיסי בלבד"
 
     def row(label, key, rule="", sign=""):
         return {"key": key, "label": label, "today": t.get(key), "alt": a.get(key), "rule": rule, "sign": sign}
 
+    electric_rule = (f"החזר קבוע של {electric['netBonus']} ₪ נטו בחודש; הסכום ברוטו מחושב כך שאחרי מס וביטוח לאומי "
+                     "יישארו לעובד בדיוק " + f"{electric['netBonus']} ₪" if electric["method"] == "gross_up"
+                     else f"החזר חשמל של {electric['netBonus']} ₪ ברוטו בחודש")
     rows = [
         row("שכר ברוטו (בסיס + עמלות + בונוס)", "gross_salary", "נתוני העובד (מהשיחה או מהתלוש)"),
         row("שווי שימוש (נוסף לשכר לצורך מס, לא משולם בפועל)", "usage_value",
-            f"מטבלת רשות המסים, שנת מס {rules['valueOfUse']['taxYear']} (data/car_usage_value_2026.csv)"),
+            f"מטבלת רשות המסים, שנת מס {rules['valueOfUse']['taxYear']}"),
         row("אחזקת רכב (בוויתור)", "maintenance",
-            _rule("waiver.maintenanceIsTaxable", waiver["maintenanceIsTaxable"]) + " (חייבת במס)"),
-        row("החזר חשמל ברוטו (מגולם כך שנטו = סכום קבוע)", "electric_refund_gross",
-            _rule("electric.netBonus", f"{electric['netBonus']} ₪ נטו, שיטה: {electric['method']}")),
+            "אחזקת הרכב חייבת במס" if waiver["maintenanceIsTaxable"] else "אחזקת הרכב פטורה ממס"),
+        row("החזר חשמל ברוטו", "electric_refund_gross", electric_rule),
         row("הכנסה חייבת במס (ברוטו + שווי שימוש + אחזקה + החזר חשמל)", "taxable_income", "סכום השורות שמעל"),
-        row("מס לפי מדרגות", "tax_before_credits", _rule("netMethod.brackets", _brackets_text(m["brackets"]))),
-        row("הפחתת נקודות זיכוי", "credit_points_value", _rule("netMethod.creditPointValue", f"{m['creditPointValue']} ₪ לנקודה"), "−"),
+        row("מס לפי מדרגות", "tax_before_credits", "מדרגות המס: " + _brackets_text(m["brackets"])),
+        row("הפחתת נקודות זיכוי", "credit_points_value", f"{m['creditPointValue']} ₪ לכל נקודת זיכוי", "−"),
         row("זיכוי על הפרשת פנסיה", "pension_credit",
-            _rule("netMethod.pensionCredit", f"{m['pensionCredit']['rate'] * 100:g}% מההפרשה, עד תקרה"), "−"),
-        row("מס הכנסה לתשלום", "income_tax", "מס לפי מדרגות פחות הנקודות והזיכוי (לא פחות מ-0)", "−"),
+            f"{_pct(pc['rate'])} מההפרשה לפנסיה, עד תקרה שנקבעה בכללים", "−"),
+        row("מס הכנסה לתשלום", "income_tax", "מס לפי מדרגות, פחות נקודות הזיכוי והזיכוי על הפנסיה (לא פחות מ-0)", "−"),
         row("ביטוח לאומי", "national_insurance",
-            _rule("netMethod.nationalInsurance", f"{m['nationalInsurance']['lowRate'] * 100:g}% עד {m['nationalInsurance']['threshold']:,}, "
-                                                 f"{m['nationalInsurance']['highRate'] * 100:g}% עד {m['nationalInsurance']['ceiling']:,}"), "−"),
+            f"{_pct(ni['lowRate'])} עד {ni['threshold']:,} ₪, ו-{_pct(ni['highRate'])} עד התקרה ({ni['ceiling']:,} ₪)", "−"),
         row("מס בריאות", "health",
-            _rule("netMethod.health", f"{m['health']['lowRate'] * 100:g}% עד {m['health']['threshold']:,}, "
-                                      f"{m['health']['highRate'] * 100:g}% עד {m['health']['ceiling']:,}"), "−"),
-        row("פנסיה (עובד)", "pension", _rule("netMethod.contributionsBase", m["contributionsBase"]) + " × אחוז הפנסיה של העובד", "−"),
-        row("קרן השתלמות (עובד)", "study_fund", _rule("netMethod.contributionsBase", m["contributionsBase"]) + " × אחוז קרן ההשתלמות", "−"),
-        row("השתתפות ברכב", "participation", _rule("netMethod.participation.treatment", m["participation"]["treatment"]), "−"),
-        row("חלק העובד בפער המסלול המשפחתי", "family_employee_share", "מסלול ברוכת ילדים (rules_config.json › familyTrack)", "−"),
-        row("נטו חודשי", "net", "ברוטו + אחזקה + החזר חשמל − מס הכנסה − ביטוח לאומי − בריאות − פנסיה − קרן השתלמות − השתתפות"),
+            f"{_pct(health['lowRate'])} עד {health['threshold']:,} ₪, ו-{_pct(health['highRate'])} עד התקרה ({health['ceiling']:,} ₪)", "−"),
+        row("פנסיה (עובד)", "pension", f"אחוז הפנסיה של העובד {base_text}", "−"),
+        row("קרן השתלמות (עובד)", "study_fund", f"אחוז קרן ההשתלמות של העובד {base_text}", "−"),
+        row("השתתפות ברכב", "participation",
+            "השתתפות העובד, מנוכה מהנטו" if m["participation"]["treatment"] == "net_deduction"
+            else "השתתפות העובד", "−"),
+        row("חלק העובד בפער המסלול המשפחתי", "family_employee_share", "מסלול ברוכת ילדים: חלק העובד בפער העלות", "−"),
+        row("נטו חודשי", "net",
+            "ברוטו + אחזקה + החזר חשמל, פחות מס הכנסה, ביטוח לאומי, בריאות, פנסיה, קרן השתלמות והשתתפות"),
     ]
     return rows
 

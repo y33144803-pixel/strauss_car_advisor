@@ -275,14 +275,28 @@ def _topic(state: ConversationState) -> str | None:
 
 
 def display_title(custom: str | None, topic: str | None, created_at: str) -> str:
-    """שם השיחה בהיסטוריה: שם שהמשתמש נתן, ואחרת נושא + תאריך (יום/חודש), ואם עוד אין נושא - "בדיקת נטו" + תאריך ושעה."""
+    """שם השיחה בהיסטוריה: שם שהמשתמש נתן, ואחרת הנושא, ואם עוד אין נושא - "בדיקת נטו". התאריך מוצג בנפרד (relative_day)."""
     custom = (custom or "").strip()
     if custom:
         return custom
-    created = datetime.fromisoformat(created_at)
-    if topic:
-        return f"{topic} · {created:%d/%m}"
-    return f"בדיקת נטו · {created:%d/%m %H:%M}"
+    return topic or "בדיקת נטו"
+
+
+def relative_day(timestamp: str, now: datetime | None = None) -> str:
+    """תאריך יחסי קצר להיסטוריית השיחות: "היום", "אתמול", "לפני 3 ימים", "לפני שבוע", ואחרי כחודש - תאריך."""
+    moment = datetime.fromisoformat(timestamp)
+    days = ((now or datetime.now()).date() - moment.date()).days
+    if days <= 0:
+        return "היום"
+    if days == 1:
+        return "אתמול"
+    if days < 7:
+        return f"לפני {days} ימים"
+    if days < 14:
+        return "לפני שבוע"
+    if days < 30:
+        return f"לפני {days // 7} שבועות"
+    return f"{moment:%d/%m/%Y}"
 
 
 def _changes(base, new, path=()) -> tuple[list[tuple], list[tuple]]:
@@ -590,7 +604,7 @@ def list_user_sessions(username: str) -> list[dict]:
                                ORDER BY updated_at DESC""", (username,)).fetchall()
     return [{"session_id": row["session_id"], "created_at": row["created_at"], "updated_at": row["updated_at"],
              "preview": row["first_user"][:80], "title": display_title(row["title"], row["topic"], row["created_at"]),
-             "messages": row["user_messages"] or 0} for row in rows]
+             "when": relative_day(row["updated_at"]), "messages": row["user_messages"] or 0} for row in rows]
 
 
 def mark_session_viewed(session_id: str, admin_username: str) -> None:

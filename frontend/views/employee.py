@@ -14,7 +14,7 @@ from data_store import find_occupation
 from payslip import (ALLOWED_TYPES, FIELD_LABELS, OCCUPATION_LABEL, PayslipError, apply_payslip, check_file,
                      extract_payslip, summary_text)
 from ui import (CLOSE_PICKER, avatar_for, get_session_id, render_car_picker, render_comparison,
-                render_history_sidebar, render_state_card, require_consent, require_role, show_markdown, typing_status_html)
+                render_history_sidebar, render_rail_header, render_state_card, require_consent, require_role, show_markdown, typing_status_html)
 
 require_role("employee")                # רק עובדים (או התחברות כבויה בפיתוח מקומי)
 logger = logging.getLogger("strauss.employee")
@@ -26,18 +26,21 @@ CHAT_HEIGHT_WITH_PICKER = 250
 
 st.session_state.setdefault("picker_nonce", 0)
 
-st.session_state.setdefault("show_comparison", False)
-st.session_state.setdefault("show_data", False)
-render_history_sidebar(sid, show_data_toggle=True)    # שיחה חדשה + מתג הנתונים + היסטוריית שיחות בסרגל הצד
+st.session_state.setdefault("side_panel", True)       # פאנל הצד (הנתונים וההשוואה): פתוח כברירת מחדל, אפשר לסגור ולפתוח
+render_history_sidebar(sid)                           # שיחה חדשה + היסטוריית שיחות בסרגל הצד
 # האישור אחרי הסרגל: בזמן שמוצג כרטיס האישור הסרגל (שיחה חדשה, היסטוריה) נשאר במקומו ולא נעלם
 require_consent(sid)                    # אישור שמירת השיחות: בכל שיחה חדשה, אלא אם סימנו "אל תזכירו שוב"
 
-# בצד (עמודה שמאלית), לפי בקשת העובד: "הנתונים שנקלטו" ו/או ההשוואה המפורטת. אחרת כל המסך הוא שיחה.
-# שני המתגים בסרגל הצד, מתחת לכפתור "שיחה חדשה"
+# בצד (עמודה שמאלית): "הנתונים שנקלטו" ואחריהם ההשוואה המפורטת (כשיש תוצאה). הפאנל נסגר ונפתח בכפתור;
+# כשהוא סגור כל המסך הוא שיחה.
 initial_state = db.load_state(sid)
-show_comparison = bool(initial_state.last_result and st.session_state["show_comparison"])
-show_data = bool(st.session_state["show_data"])
-side_open = show_comparison or show_data
+side_open = bool(st.session_state["side_panel"])
+show_data = side_open
+show_comparison = bool(initial_state.last_result and side_open)
+
+
+def set_side_panel(open_: bool) -> None:
+    st.session_state["side_panel"] = open_
 data_slot = None                         # נוצר בעמודת הצד; מצויר מחדש אחרי כל כלי כך שהוא מתמלא מול עיני העובד
 
 
@@ -74,6 +77,8 @@ def follow_turn(turn) -> None:
                 draw_state_card()
             time.sleep(0.2)
     finished = turns.finish(sid)
+    if not pending_user_message(sid):
+        st.session_state.pop("inflight_sid", None)            # התור הסתיים ויש תשובה
     if finished is not None and finished.error is not None:   # תקלה בשירות המודל לא אמורה להפיל את המסך
         logger.error("תור השיחה נכשל (שיחה %s)", sid, exc_info=finished.error)
         st.session_state["chat_error"] = friendly_error(finished.error)
@@ -84,6 +89,7 @@ def follow_turn(turn) -> None:
 
 def run_turn(text: str | None) -> None:
     """תור בשיחה (text=None: ניסיון חוזר להודעה שכבר נשמרה). רץ ברקע (turns.py) והמסך עוקב אחריו."""
+    st.session_state["inflight_sid"] = sid                  # תור רץ: אם יקטע ללא תשובה, ההודעה תימשך אוטומטית (ראו למטה)
     turn = turns.start(sid, lambda t: chat(sid, text, on_step=t.on_step, on_status=t.on_status))
     follow_turn(turn)
 
@@ -177,7 +183,10 @@ def render_payslip_card() -> None:
 watch_representative()
 
 if side_open:
-    chat_col, result_col = st.columns([3, 2], gap="medium")
+    chat_col, side_col = st.columns([3, 2], gap="medium")
+    result_col = side_col.container(key="side-rail")      # כרטיס הצד הסגול: הדמות, הנתונים וההשוואה
+    with result_col:
+        render_rail_header()
     if show_data:
         with result_col:
             if show_comparison:
@@ -197,6 +206,11 @@ picker = picker_state(sid)
 picker_open = bool(picker and picker["visible"])
 
 with chat_col:
+    # כפתור אחד בראש השיחה: סוגר את פאנל הנתונים וההשוואה כשהוא פתוח, ופותח אותו כשהוא סגור
+    if side_open:
+        st.button("סגירת הנתונים וההשוואה", key="close_side", icon=":material/close:", on_click=set_side_panel, args=(False,))
+    else:
+        st.button("נתונים והשוואה", key="open_side", icon=":material/dock_to_left:", on_click=set_side_panel, args=(True,))
     # ההודעות מוצגות בקונטיינר שנוצר כאן ונמלא בהמשך - אחרי שהתור הנוכחי טופל.
     # כשהבורר פתוח החלון נמוך יותר, כדי שתיבת הקלט תישאר גלויה בלי לגלול
     # (הגובה בפועל נקבע ב-CSS לפי גובה המסך; המפתח קובע איזה כלל חל)
@@ -260,8 +274,10 @@ with chat_box:
     elif pending_user_message(sid):
         unanswered = pending_user_message(sid)
         resumes = st.session_state.setdefault("auto_resumes", {})
-        if not st.session_state.get("chat_error") and resumes.get((sid, unanswered), 0) < MAX_AUTO_RESUMES:
-            # אין שגיאה: התור נקטע באמצע (למשל לחיצה על מתג או כפתור בזמן שהבוט חשב) - ממשיכים אוטומטית, עד
+        if (st.session_state.get("inflight_sid") == sid and not st.session_state.get("chat_error")
+                and resumes.get((sid, unanswered), 0) < MAX_AUTO_RESUMES):
+            # אין שגיאה, והתור בשיחה הזאת התחיל בחלון הזה ונקטע (למשל לחיצה על מתג בזמן שהבוט חשב; שיחה ישנה שנפתחה
+            # מההיסטוריה לא נענית אוטומטית) - ממשיכים אוטומטית, עד
             # MAX_AUTO_RESUMES פעמים לכל הודעה (לחיצות חוזרות קוטעות שוב). אם זה לא מצליח - מוצג "נסיון חוזר"
             resumes[(sid, unanswered)] = resumes.get((sid, unanswered), 0) + 1
             run_turn(None)
@@ -284,7 +300,8 @@ with chat_box:
 if show_comparison:
     with result_col:
         st.subheader("השוואה")
-        render_comparison(state.last_result, stale=state.result_is_stale)
+        with st.container(key="cmp-card"):
+            render_comparison(state.last_result, stale=state.result_is_stale)
         if state.result_is_stale and st.button("חשב מחדש", type="primary"):
             outcome = recalculate(sid)
             if not outcome["ok"]:

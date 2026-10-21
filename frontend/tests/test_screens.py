@@ -31,13 +31,15 @@ def ask_rep(context: str):
     return request_representative_info(SID, "new_participation", context, True)
 
 
-def employee_app(show_comparison: bool = False, show_data: bool = False) -> AppTest:
+def employee_app(show_comparison: bool = False, show_data: bool = False, side_panel: bool = True,
+                 inflight: bool = False) -> AppTest:
+    """מסך העובד. פאנל הצד (נתונים והשוואה) פתוח כברירת מחדל; side_panel=False מדמה שהעובדת סגרה אותו.
+    (show_comparison / show_data נשארו מהגרסה עם המתגים ואין להם השפעה: ההשוואה מוצגת כשיש תוצאה והפאנל פתוח.)"""
     at = signed_in(AppTest.from_file(os.path.join(VIEWS, "employee.py"), default_timeout=30))
     at.query_params["sid"] = SID
-    if show_comparison:
-        at.session_state["show_comparison"] = True       # העובדת סימנה "הצג השוואה מפורטת בצד"
-    if show_data:
-        at.session_state["show_data"] = True             # העובדת סימנה "הצג את הנתונים שנקלטו בצד"
+    at.session_state["side_panel"] = side_panel
+    if inflight:
+        at.session_state["inflight_sid"] = SID           # תור שהתחיל בחלון הזה ונקטע: ממשיך אוטומטית
     return at.run()
 
 
@@ -56,8 +58,9 @@ def test_new_session_shows_greeting_and_no_comparison():
     assert not at.exception
     assert any("שלום" in m.value for m in at.markdown)
     assert not any("ההשוואה תופיע כאן" in m.value for m in at.markdown)   # בלי תוצאה - אין פאנל השוואה ריק
-    assert [t.label for t in at.toggle] == ["הצג את הנתונים שנקלטו בצד"]    # בלי תוצאה: רק מתג הנתונים
-    assert not at.subheader                                                # ובלי פאנל צד כשהמתג כבוי
+    assert not at.toggle                                                   # אין עוד מתגים: הפאנל נפתח ונסגר בכפתור
+    assert not at.subheader                                                # בלי תוצאה אין פאנל השוואה (הנתונים כן מוצגים)
+    assert any("הנתונים שנקלטו עד כה" in m.value for m in at.markdown)
     assert at.query_params["sid"] == [SID] or at.query_params["sid"] == SID
 
 
@@ -93,14 +96,16 @@ def test_provisional_comparison_is_labeled_and_sidebar_options_exist():
     assert any("ממתין לתשובה" in i.value or "ממתין" in i.value for i in at.info)
 
 
-def test_comparison_is_hidden_until_the_toggle_is_checked():
+def test_side_panel_closes_and_opens_with_a_button():
     fill_to_comparison()
     at = employee_app()
-    # יש תוצאה: מתג ההשוואה בסרגל הצד, מתחת למתג "הצג את הנתונים שנקלטו בצד"
-    assert [t.label for t in at.toggle] == ["הצג את הנתונים שנקלטו בצד", "הצג השוואה מפורטת בצד"]
-    assert not any("class='kpis'" in m.value for m in at.markdown)         # אבל ההשוואה מוסתרת כברירת מחדל
-    at.toggle[1].set_value(True).run()
-    assert any("class='kpis'" in m.value for m in at.markdown)             # ומופיעה בצד אחרי הסימון
+    assert not at.toggle and any(b.key == "close_side" for b in at.button)      # פתוח כברירת מחדל, עם כפתור סגירה
+    assert any("class='kpis'" in m.value for m in at.markdown)
+    at.button(key="close_side").click().run()                                    # סגירה: כל המסך שיחה
+    assert not any("class='kpis'" in m.value for m in at.markdown)
+    assert any(b.key == "open_side" for b in at.button) and not any(b.key == "close_side" for b in at.button)
+    at.button(key="open_side").click().run()                                     # פתיחה מחדש
+    assert any("class='kpis'" in m.value for m in at.markdown)
 
 
 def test_progress_total_never_changes_during_the_conversation():
@@ -310,7 +315,7 @@ def test_unanswered_message_shows_retry_and_resumes(monkeypatch):
         return {"reply": "שלום! תשובה אחרי ניסיון חוזר", "tool_calls": []}
 
     monkeypatch.setattr(agent, "chat", fake_chat)
-    at = employee_app()                                        # תור שנקטע (בלי שגיאה): ממשיך אוטומטית, בלי כפתור
+    at = employee_app(inflight=True)                           # תור שנקטע (בלי שגיאה): ממשיך אוטומטית, בלי כפתור
     assert db.load_messages(SID)[-1]["role"] == "assistant"
     assert not any("עדיין לא נענתה" in w.value for w in at.warning)
 
@@ -328,7 +333,7 @@ def test_unanswered_message_is_resumed_a_few_times_then_shows_retry(monkeypatch)
         return {}
 
     monkeypatch.setattr(agent, "chat", silent_chat)
-    at = employee_app()
+    at = employee_app(inflight=True)
     assert len(calls) == 3                                     # כמה ניסיונות אוטומטיים בלבד (MAX_AUTO_RESUMES)
     assert any("עדיין לא נענתה" in w.value for w in at.warning)
     assert any(b.label == "נסיון חוזר" for b in at.button)
@@ -414,7 +419,7 @@ def app_with_login(username=None, password=None, consent=True) -> AppTest:
 def test_login_page_is_shown_before_signing_in(auth_on):
     at = app_with_login()
     assert not at.exception
-    assert any("כניסה למערכת" in m.value for m in at.markdown)
+    assert any("ברוך הבא" in m.value for m in at.markdown)
     assert not at.chat_input                                         # בלי כניסה אין שיחה
 
 
@@ -564,7 +569,7 @@ def test_sidebar_has_new_chat_and_history_only(auth_on):
     assert "שיחה חדשה" in sidebar_labels
     sidebar_keys = [b.key for b in at.sidebar.button]
     assert "open_h1" in sidebar_keys and "open_h2" in sidebar_keys                   # שתי שיחות קודמות בהיסטוריה
-    assert [t.label for t in at.sidebar.toggle] == ["הצג את הנתונים שנקלטו בצד"]     # מתג הנתונים בסרגל הצד, מתחת ל"שיחה חדשה"
+    assert not at.sidebar.toggle                                                     # אין מתגים בסרגל הצד (הנתונים בפאנל שנסגר ונפתח)
     assert "הגדרות" not in sidebar_labels and "יציאה" not in sidebar_labels      # עברו לתפריט בבאנר
     assert not any("הנתונים שנקלטו עד כה" in m.value for m in at.sidebar.markdown)   # הנתונים כבר לא בסרגל הצד
 
@@ -572,7 +577,7 @@ def test_sidebar_has_new_chat_and_history_only(auth_on):
 def test_logout_from_banner_menu_returns_to_login_screen(auth_on):
     at = logged_in_dana(extra_sessions=False)
     at.button(key="menu_logout").click().run()
-    assert any("כניסה למערכת" in m.value for m in at.markdown) and not at.chat_input
+    assert any("ברוך הבא" in m.value for m in at.markdown) and not at.chat_input
 
 
 def test_open_rename_and_delete_conversations_from_sidebar(auth_on):
@@ -586,14 +591,14 @@ def test_open_rename_and_delete_conversations_from_sidebar(auth_on):
     at.sidebar.button(key="save_h1").click().run()                    # שינוי שם
     assert db.list_user_sessions("dana")[0]["title"] == "הרכב החשמלי" or \
         "הרכב החשמלי" in [h["title"] for h in db.list_user_sessions("dana")]
-    assert "הרכב החשמלי" in [b.label for b in at.sidebar.button]
+    assert any(b.label.startswith("הרכב החשמלי\n\n") for b in at.sidebar.button)      # השם, ומתחתיו (בעיצוב: משמאל) התאריך היחסי
 
     at.sidebar.button(key="delete_h1").click().run()                  # מחיקה: קודם אישור
     assert db.session_exists("h1")
     assert any("למחוק את השיחה" in w.value for w in at.sidebar.warning)
     at.sidebar.button(key="confirm_delete_yes").click().run()
     assert not db.session_exists("h1")
-    assert "הרכב החשמלי" not in [b.label for b in at.sidebar.button]
+    assert not any(b.label.startswith("הרכב החשמלי") for b in at.sidebar.button)
     assert at.session_state["sid"] != "h1"                            # נמחקה השיחה הפתוחה - נפתחת חדשה
 
 
@@ -619,18 +624,18 @@ def test_account_forms_have_cancel_buttons(account_users):
 
 
 def test_data_card_becomes_a_collapsed_dropdown_while_comparison_is_shown():
-    fill_to_comparison()
-    only_data = employee_app(show_data=True)
-    assert not only_data.expander                                      # בלי השוואה: הנתונים מוצגים רגיל
+    only_data = employee_app()                                         # בלי תוצאה: הנתונים מוצגים רגיל
+    assert not only_data.expander
     assert "הנתונים שנקלטו עד כה" in sidebar_text(only_data)
 
-    both = employee_app(show_comparison=True, show_data=True)
-    assert [e.label for e in both.expander] == ["הצג נתונים", "איך חושב?"]    # עם השוואה: תיבה נפתחת + פירוט החישוב
+    fill_to_comparison()
+    both = employee_app()
+    assert [e.label for e in both.expander] == ["הצג נתונים", "איך חושב?"]    # עם תוצאה: תיבה נפתחת + פירוט החישוב
     assert both.expander[0].proto.expanded is False                     # סגורה כברירת מחדל
     assert "הנתונים שנקלטו עד כה" in " ".join(m.value for m in both.expander[0].markdown)
 
-    back = employee_app(show_data=True)                                 # ההשוואה נעלמה: חוזר למצב הרגיל
-    assert not back.expander and "הנתונים שנקלטו עד כה" in sidebar_text(back)
+    closed = employee_app(side_panel=False)                             # פאנל סגור: אין נתונים ואין השוואה בצד
+    assert not closed.expander and "הנתונים שנקלטו עד כה" not in sidebar_text(closed)
 
 
 def test_greeting_asks_what_the_employee_wants_to_do():
@@ -725,7 +730,7 @@ def test_signed_in_user_is_logged_out_when_their_tokens_are_deleted(auth_on):
     assert at.chat_input                                              # מחוברת
     db.clear_tokens("dana")                                           # למשל איפוס סיסמה על ידי מנהל
     at.run()
-    assert any("כניסה למערכת" in m.value for m in at.markdown) and not at.chat_input
+    assert any("ברוך הבא" in m.value for m in at.markdown) and not at.chat_input
 
 
 def test_password_change_signs_out_other_devices_but_keeps_this_one(account_users):
@@ -851,3 +856,15 @@ def test_payslip_card_stays_with_an_error_when_saving_fails():
     next(b for b in at.button if b.key == "payslip_ok").click().run()
     assert any(b.key == "payslip_ok" for b in at.button)              # הכרטיס לא נעלם
     assert any("לא הצלחתי לשמור" in e.value for e in at.error)
+
+
+def test_old_unanswered_session_opened_fresh_is_not_answered_automatically(monkeypatch):
+    import agent
+    agent.start_session(SID)
+    messages = db.load_messages(SID)
+    messages.append({"role": "user", "content": "היי"})
+    db.save_messages(SID, messages)
+    calls = []
+    monkeypatch.setattr(agent, "chat", lambda *a, **k: calls.append(1) or {})
+    at = employee_app()                                        # שיחה ישנה שנפתחה בחלון חדש: אין קריאה אוטומטית למודל
+    assert not calls and any(b.label == "נסיון חוזר" for b in at.button)

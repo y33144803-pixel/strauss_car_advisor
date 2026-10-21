@@ -7,15 +7,15 @@ import streamlit as st
 import db
 from agent_tools import REP_FIELDS
 from data_store import get_rules
-from ui import badge, page_header, require_role
+from ui import badge, rep_hero, require_role
 
 rep_user = require_role("rep")          # רק נציגים (התחברות עם שם משתמש וסיסמה)
-page_header("מסך נציג תחבורה", "שאלות שהבוט לא יכול להשלים לבד. התשובה שלך חוזרת לשיחה של העובד מיד.", "🧑‍💼")
 
 
 @st.fragment(run_every=5)
 def open_questions() -> None:
     questions = db.list_questions("open")
+    rep_hero(len(questions), sum(q["status"] in ("answered", "applied") for q in db.list_questions(None)))   # המונים מתרעננים עם הרשימה
     st.subheader(f"שאלות פתוחות ({len(questions)})")
     if not questions:
         st.markdown("<div class='empty-card'><div class='big'>✅</div>אין שאלות פתוחות כרגע. המסך מתרענן אוטומטית.</div>",

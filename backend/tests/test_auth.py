@@ -244,15 +244,24 @@ def test_session_title_is_professional_and_follows_the_topic():
     auth.seed_users()
     db.claim_session("t1", "dana")
     db.save_messages("t1", [{"role": "user", "content": "אני רוצה לעבור לרכב חשמלי"}])
-    assert db.list_user_sessions("dana")[0]["title"].startswith("בדיקת נטו · ")
+    assert db.list_user_sessions("dana")[0]["title"] == "בדיקת נטו"
     state = db.load_state("t1")
     state.target.kind, state.target.label = "car", "BYD ATTO 3"
     db.save_state(state)
     title = db.list_user_sessions("dana")[0]["title"]
-    assert title.startswith("מעבר ל-BYD ATTO 3 · ") and "אני רוצה" not in title
+    assert title.startswith("מעבר ל-BYD ATTO 3") and "אני רוצה" not in title and "/" not in title
     state.target.kind, state.target.label = "waiver", None
     db.save_state(state)
-    assert db.list_user_sessions("dana")[0]["title"].startswith("ויתור על רכב · ")
-    assert db.list_all_sessions()[0]["title"].startswith("ויתור על רכב · ")            # אותו שם גם במסך המנהל
+    assert db.list_user_sessions("dana")[0]["title"].startswith("ויתור על רכב")
+    assert db.list_all_sessions()[0]["title"].startswith("ויתור על רכב")            # אותו שם גם במסך המנהל
     db.rename_session("t1", "dana", "הרכב של אשתי")
     assert db.list_user_sessions("dana")[0]["title"] == "הרכב של אשתי"                  # שם ידני גובר
+
+
+def test_relative_day_labels():
+    from datetime import datetime
+    now = datetime(2026, 10, 21, 12, 0, 0)
+    label = lambda ts: db.relative_day(ts, now)
+    assert label("2026-10-21T01:00:00") == "היום" and label("2026-10-20T23:59:00") == "אתמול"
+    assert label("2026-10-18T09:00:00") == "לפני 3 ימים" and label("2026-10-12T09:00:00") == "לפני שבוע"
+    assert label("2026-10-01T09:00:00") == "לפני 2 שבועות" and label("2026-08-01T09:00:00") == "01/08/2026"
