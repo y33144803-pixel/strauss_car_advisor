@@ -224,8 +224,9 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-
   .carbot-logo .cb-name { font-size: 1.3rem; }
   .carbot-logo .cb-sub { font-size: .58rem; }
   .block-container { padding-top: 4.9rem; padding-left: .8rem; padding-right: .8rem; }
-  [data-testid="stSidebarContent"] { padding-top: 4.9rem; }
-  [data-testid="stSidebar"][aria-expanded="true"] { width: 85vw !important; min-width: 0 !important; max-width: 23rem !important; }
+  [data-testid="stSidebarContent"] { padding-top: 6.4rem; }
+  #close-sidebar-btn { top: 3.8rem; }
+  [data-testid="stSidebar"][aria-expanded="true"] { width: 85vw !important; min-width: 0 !important; max-width: 17rem !important; }
 }
 .st-key-user-menu { direction: ltr; display: flex; justify-content: flex-start; }
 .st-key-user-menu [data-testid="stPopoverButton"] { background: transparent !important; border: 0 !important; box-shadow: none !important; color: #fff;
@@ -323,15 +324,20 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 .st-key-chat-list button p { padding-left: 34px; }
 
 /* פאנל הצד: "הנתונים שנקלטו עד כה" */
-[data-testid="stSidebarContent"] { padding-top: 6.4rem; }
-/* סרגל רחב יותר, כדי ששמות השיחות ייראו במלואם (ושם ארוך עדיין יורד לשורה שנייה במקום להיחתך) */
-[data-testid="stSidebar"][aria-expanded="true"] { width: 23rem !important; min-width: 23rem !important; }
+[data-testid="stSidebarContent"] { padding-top: 7.6rem; position: relative; }
+/* כפתור סגירת הסרגל (נוצר ב-JS) בראש הסרגל, מעל "שיחה חדשה" */
+#close-sidebar-btn { position: absolute; top: 5.2rem; left: 1rem; width: 30px; height: 30px; border: 0; padding: 0;
+    border-radius: 50%; background: var(--soft); color: var(--primary); font-weight: 700; font-size: 1rem; cursor: pointer; }
+#close-sidebar-btn:hover { background: #EBDDF5; }
+/* סרגל צר יחסית (שם ארוך יורד לשורה שנייה במקום להיחתך); נפתח ונסגר בכפתור הצף */
+[data-testid="stSidebar"][aria-expanded="true"] { width: 17rem !important; min-width: 17rem !important; }
 .st-key-chat-list button p { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.35; }
 [data-testid="stSidebarHeader"] { display: none; }
-/* כפתור צף לפתיחת הסרגל (נוצר ב-JS): מופיע רק כשהסרגל סגור. הכפתור המקורי של Streamlit נמצא בתוך ה-header המוסתר */
-#open-sidebar-fab { position: fixed; right: 18px; bottom: 18px; z-index: 1000010; width: 54px; height: 54px; border-radius: 50%;
-    border: 0; background: var(--primary); color: #fff; font-size: 1.6rem; cursor: pointer; display: none;
-    align-items: center; justify-content: center; box-shadow: 0 8px 20px rgba(124,58,168,.45); }
+/* כפתור פתיחה/סגירה של הסרגל (נוצר ב-JS, תמיד מוצג; המיקום נקבע ב-JS לפי מצב הסרגל). הכפתור המקורי של Streamlit
+   נמצא בתוך ה-header המוסתר */
+#open-sidebar-fab { position: fixed; right: 12px; top: 84px; z-index: 1000010; width: 38px; height: 38px; border-radius: 50%;
+    border: 0; background: var(--primary); color: #fff; font-size: 1.2rem; cursor: pointer; display: flex;
+    align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(124,58,168,.4); padding: 0; }
 /* סרגל סגור: מסתירים את התוכן שלו לגמרי (אחרת נשארים שרידים של הכפתורים באמצע המסך) */
 [data-testid="stSidebar"][aria-expanded="false"] { visibility: hidden; }
 .state-card { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: #fff; direction: rtl; }
@@ -431,26 +437,33 @@ if (!window.parent.__bfReload) {
   window.parent.__bfReload = true;
   window.parent.addEventListener('pageshow', e => { if (e.persisted) window.parent.location.reload(); });
 }
-// הסרגל נסגר (למשל כשהחלון הצטמצם) ו-Streamlit זוכר את זה גם אחרי רענון. במסך רחב פותחים אותו מחדש אוטומטית;
-// במסך צר מופיע כפתור צף לפתיחתו (הכפתור המקורי של Streamlit נמצא ב-header שמוסתר אצלנו)
+// כפתור קבוע לפתיחה וסגירה של הסרגל (הכפתורים המקוריים של Streamlit נמצאים ב-header שמוסתר אצלנו)
 if (!window.parent.__sidebarGuard) {
-  const expand = () => {
-    const btn = doc.querySelector('[data-testid="stExpandSidebarButton"]');
+  const toggle = () => {
+    const sb = doc.querySelector('[data-testid="stSidebar"]');
+    const open = sb && sb.getAttribute('aria-expanded') === 'true';
+    const btn = doc.querySelector(open ? '[data-testid="stSidebarCollapseButton"]' : '[data-testid="stExpandSidebarButton"]');
     if (btn) (btn.querySelector('button') || btn).click();
   };
   let fab = doc.getElementById('open-sidebar-fab');
   if (!fab) {
     fab = doc.createElement('button');
-    fab.id = 'open-sidebar-fab'; fab.textContent = '☰'; fab.title = 'פתיחת התפריט';
-    fab.onclick = expand;
+    fab.id = 'open-sidebar-fab'; fab.textContent = '☰'; fab.title = 'פתיחה / סגירה של התפריט';
+    fab.onclick = toggle;
     doc.body.appendChild(fab);
   }
   window.parent.__sidebarGuard = setInterval(() => {
     const sb = doc.querySelector('[data-testid="stSidebar"]');
     const present = sb && getComputedStyle(sb).display !== 'none';
-    const collapsed = present && sb.getAttribute('aria-expanded') === 'false';
-    if (collapsed && window.parent.innerWidth >= 900) expand();
-    fab.style.display = collapsed && window.parent.innerWidth < 900 ? 'flex' : 'none';
+    const open = present && sb.getAttribute('aria-expanded') === 'true';
+    fab.style.display = present && !open ? 'flex' : 'none';           // כפתור הפתיחה רק כשהסרגל סגור
+    const content = doc.querySelector('[data-testid="stSidebarContent"]');
+    if (open && content && !doc.getElementById('close-sidebar-btn')) {  // כפתור הסגירה בתוך הסרגל, מעל "שיחה חדשה"
+      const close = doc.createElement('button');
+      close.id = 'close-sidebar-btn'; close.type = 'button'; close.textContent = '✕'; close.title = 'סגירת התפריט';
+      close.onclick = toggle;
+      content.prepend(close);
+    }
   }, 800);
 }
 if (!doc.__copyButtons) {

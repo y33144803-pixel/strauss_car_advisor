@@ -1,10 +1,12 @@
 """מסך עובד: שיחה עם הבוט (עם בורר רכבים מעל תיבת הקלט). הנתונים שנקלטו וההשוואה - בצד, לפי בקשה.
 בסרגל הצד: שיחה חדשה והיסטוריית השיחות (שינוי שם ומחיקה)."""
 import logging
+import time
 
 import streamlit as st
 
 import db
+import turns
 from actions import pick_message, picker_state, recalculate, set_picker
 from agent import STATUS_ANALYZING, chat, check_representative_updates, friendly_error, pending_user_message, start_session
 from agent_tools import REP_FIELDS
@@ -18,6 +20,7 @@ require_role("employee")                # רק עובדים (או התחברות
 logger = logging.getLogger("strauss.employee")
 sid = get_session_id()
 CHAT_HEIGHT = 480
+MAX_AUTO_RESUMES = 3        # המשך אוטומטי של תור שנקטע, לכל הודעה
 MAX_MESSAGE_CHARS = 2000      # תקרת אורך להודעת עובד (עלות מודל ונפח מסד)
 CHAT_HEIGHT_WITH_PICKER = 250
 
@@ -44,32 +47,45 @@ def draw_state_card() -> None:
             render_state_card(db.load_state(sid))
 
 
-@st.fragment(run_every=5)
 def watch_representative() -> None:
-    """בודק מדי כמה שניות אם הנציג ענה; אם כן - השיחה ממשיכה מאותה נקודה."""
-    if check_representative_updates(sid):
-        st.rerun()
+    """בודק מדי כמה שניות אם הנציג ענה; אם כן - השיחה ממשיכה מאותה נקודה.
+    הבדיקה המחזורית פעילה רק כשיש שאלה פתוחה לנציג: ריצה מחזורית בזמן תור של הבוט יכולה להפריע לציור המסך
+    (השיחה "נעלמת" עד רענון), ולכן בשיחה רגילה, בלי שאלה פתוחה, אין ריצה כזו."""
+    def check() -> None:
+        if check_representative_updates(sid):
+            st.rerun()
+    st.fragment(run_every=5 if initial_state.waiting_for_representative else None)(check)()
 
 
-def run_turn(text: str | None) -> None:
-    """תור בשיחה (text=None: ניסיון חוזר להודעה שכבר נשמרה). מוצג כבועה עם סטטוס חי, ובסיומו המסך נטען מחדש
-    מהמצב השמור - כך הפאנלים, הבורר וההשוואה תמיד מתואמים."""
+def follow_turn(turn) -> None:
+    """מציג את התור שרץ ברקע (סטטוס חי) עד שיסתיים, ואז טוען את המסך מחדש מהמצב השמור - כך הפאנלים, הבורר וההשוואה
+    תמיד מתואמים. אם המסך נקטע (לחיצה על מתג) והורץ מחדש - הריצה החדשה מתחברת לאותו תור ממשיכה לעקוב."""
     with st.chat_message("assistant", avatar=avatar_for("assistant")):
         # סטטוס אמיתי: הטקסט מתחלף לפי מה שהסוכן עושה באותו רגע (בוחן / מחפש רכב / מחשב / מנסח), ונכתב אות אחרי אות
         status_slot = st.empty()
-
-        def show_status(label: str) -> None:
-            status_slot.markdown(typing_status_html(label), unsafe_allow_html=True)
-
-        show_status(STATUS_ANALYZING)
-        try:
-            chat(sid, text, on_step=lambda step: draw_state_card(), on_status=show_status)
-        except Exception as e:  # תקלה בשירות המודל לא אמורה להפיל את המסך
-            logger.exception("תור השיחה נכשל (שיחה %s)", sid)
-            st.session_state["chat_error"] = friendly_error(e)
-            st.rerun()
-    st.session_state.pop("chat_error", None)
+        shown, steps = None, turn.steps
+        while not turn.done:
+            label = turn.status or STATUS_ANALYZING
+            if label != shown:
+                shown = label
+                status_slot.markdown(typing_status_html(label), unsafe_allow_html=True)
+            if turn.steps != steps:
+                steps = turn.steps
+                draw_state_card()
+            time.sleep(0.2)
+    finished = turns.finish(sid)
+    if finished is not None and finished.error is not None:   # תקלה בשירות המודל לא אמורה להפיל את המסך
+        logger.error("תור השיחה נכשל (שיחה %s)", sid, exc_info=finished.error)
+        st.session_state["chat_error"] = friendly_error(finished.error)
+    else:
+        st.session_state.pop("chat_error", None)
     st.rerun()
+
+
+def run_turn(text: str | None) -> None:
+    """תור בשיחה (text=None: ניסיון חוזר להודעה שכבר נשמרה). רץ ברקע (turns.py) והמסך עוקב אחריו."""
+    turn = turns.start(sid, lambda t: chat(sid, text, on_step=t.on_step, on_status=t.on_status))
+    follow_turn(turn)
 
 
 def confirm_payslip() -> None:
@@ -213,12 +229,18 @@ submitted = st.chat_input("כתוב/י כאן... (+ לצירוף תלוש שכר
                           max_chars=MAX_MESSAGE_CHARS)
 prompt = submitted.text if submitted else None
 upload = submitted.files[0] if submitted and submitted.files else None
-text = prompt or picked_text or st.session_state.pop("payslip_text", None)       # (הטקסט האחרון: אישור כרטיס התלוש)
+live_turn = turns.get(sid)                                       # תור שרץ ברקע (או הסתיים ועוד לא טופל)
+text = (prompt or picked_text or st.session_state.pop("payslip_text", None)         # (הטקסט האחרון: אישור כרטיס התלוש)
+        or (None if live_turn else st.session_state.pop("queued_text", None)))
 messages = start_session(sid)
 with chat_box:
-    for m in messages:
+    for m in (m for m in messages if not m.get("hidden")):          # הודעות מערכת נסתרות לא מוצגות
         with st.chat_message(m["role"], avatar=avatar_for(m["role"])):
             show_markdown(m["content"])
+    if live_turn:
+        if text:                                # נשלחה הודעה בזמן שהבוט עוד חושב: ממתינה לסיום התור
+            st.session_state["queued_text"] = " ".join(t for t in (st.session_state.get("queued_text"), text) if t)
+        follow_turn(live_turn)
     if upload:
         # קריאת התלוש מוצגת כמו כל פעולה של הבוט: בועה עם סטטוס חי ("קורא את התלוש...")
         with st.chat_message("assistant", avatar=avatar_for("assistant")):
@@ -236,6 +258,13 @@ with chat_box:
             show_markdown(text)                 # ההודעה מוצגת מיד, בלי לחכות לתשובה
         run_turn(text)
     elif pending_user_message(sid):
+        unanswered = pending_user_message(sid)
+        resumes = st.session_state.setdefault("auto_resumes", {})
+        if not st.session_state.get("chat_error") and resumes.get((sid, unanswered), 0) < MAX_AUTO_RESUMES:
+            # אין שגיאה: התור נקטע באמצע (למשל לחיצה על מתג או כפתור בזמן שהבוט חשב) - ממשיכים אוטומטית, עד
+            # MAX_AUTO_RESUMES פעמים לכל הודעה (לחיצות חוזרות קוטעות שוב). אם זה לא מצליח - מוצג "נסיון חוזר"
+            resumes[(sid, unanswered)] = resumes.get((sid, unanswered), 0) + 1
+            run_turn(None)
         retry_slot = st.empty()                 # בלחיצה ההודעה והכפתור נעלמים מיד (לא רק אחרי שהבוט עונה)
         with retry_slot.container():
             st.warning(st.session_state.get("chat_error") or "ההודעה האחרונה שלך עדיין לא נענתה.")

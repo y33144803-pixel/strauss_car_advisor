@@ -310,12 +310,28 @@ def test_unanswered_message_shows_retry_and_resumes(monkeypatch):
         return {"reply": "שלום! תשובה אחרי ניסיון חוזר", "tool_calls": []}
 
     monkeypatch.setattr(agent, "chat", fake_chat)
-    at = employee_app()
-    assert any("עדיין לא נענתה" in w.value for w in at.warning)
-    retry = next(b for b in at.button if b.label == "נסיון חוזר")
-    retry.click().run()
+    at = employee_app()                                        # תור שנקטע (בלי שגיאה): ממשיך אוטומטית, בלי כפתור
     assert db.load_messages(SID)[-1]["role"] == "assistant"
     assert not any("עדיין לא נענתה" in w.value for w in at.warning)
+
+
+def test_unanswered_message_is_resumed_a_few_times_then_shows_retry(monkeypatch):
+    import agent
+    agent.start_session(SID)
+    messages = db.load_messages(SID)
+    messages.append({"role": "user", "content": "היי"})
+    db.save_messages(SID, messages)
+    calls = []
+
+    def silent_chat(session_id, text=None, llm=None, on_step=None, on_status=None):
+        calls.append(text)                                     # לא עונה (כמו תור שנקטע שוב)
+        return {}
+
+    monkeypatch.setattr(agent, "chat", silent_chat)
+    at = employee_app()
+    assert len(calls) == 3                                     # כמה ניסיונות אוטומטיים בלבד (MAX_AUTO_RESUMES)
+    assert any("עדיין לא נענתה" in w.value for w in at.warning)
+    assert any(b.label == "נסיון חוזר" for b in at.button)
 
 
 def test_service_failure_shows_friendly_message(monkeypatch):

@@ -40,17 +40,23 @@ def open_questions() -> None:
                 continue
             with st.form(f"answer_{q['id']}"):
                 # value=None: שדה ריק. בלי זה ברירת המחדל 0 הייתה נשמרת בטעות כהשתתפות של 0 ₪
-                value = st.number_input("הסכום (₪)" + ("" if free_text else " - חובה"), min_value=0.0, max_value=50000.0, step=50.0,
-                                        value=None, placeholder="הקלד/י סכום", key=f"val_{q['id']}")
+                no_amount = False if free_text else st.checkbox(
+                    "אין סכום למסור (למשל: הרכב לא קיים או לא ניתן לקבוע) - חובה לכתוב הערה", key=f"noamt_{q['id']}")
+                value = st.number_input("הסכום (₪)" + ("" if free_text or no_amount else " - חובה"), min_value=0.0,
+                                        max_value=50000.0, step=50.0, value=None, placeholder="הקלד/י סכום",
+                                        key=f"val_{q['id']}")
                 # תאריך אופציונלי: שדה ריק = ללא תאריך. (תיבת סימון בתוך טופס לא מעדכנת את השדה בזמן אמת, ולכן הוסרה)
                 effective = st.date_input("בתוקף מתאריך (אופציונלי)", value=None, key=f"date_{q['id']}",
                                           format="DD/MM/YYYY")
-                note = st.text_input("הערה (אופציונלי)", key=f"note_{q['id']}")
+                note = st.text_input("הערה לבוט (לא תוצג לעובד; הבוט יחליט מה לומר לו)", key=f"note_{q['id']}")
                 if st.form_submit_button("שלח תשובה", type="primary"):
-                    if value is None and not (free_text and note):
-                        st.error("יש להזין סכום לפני השליחה (אפשר גם 0, אם זה הסכום הנכון)."
-                                 if not free_text else "יש להזין סכום או הערה.")
+                    if (free_text or no_amount) and not note:
+                        st.error("יש לכתוב הערה: הבוט משתמש בה כדי להסביר לעובד.")
+                    elif value is None and not (free_text or no_amount):
+                        st.error("יש להזין סכום לפני השליחה (אפשר גם 0, אם זה הסכום הנכון), או לסמן שאין סכום למסור.")
                     else:
+                        if no_amount:
+                            value = None                                   # סימון "אין סכום": גם אם הוקלד מספר - לא נשמר
                         db.answer_question(q["id"], value, effective.strftime("%d/%m/%Y") if effective else None,
                                            note or None, answered_by=rep_user["username"])      # נשמר מי ענה
                         st.rerun(scope="app")

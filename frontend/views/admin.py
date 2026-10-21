@@ -106,7 +106,7 @@ with tab_sessions:
             close.button("סגירת השיחה", key="admin_close_session", use_container_width=True, on_click=close_session)
             st.caption("צפייה בלבד - אי אפשר לכתוב או לשנות שיחה של משתמש.")
             st.markdown(user_avatar_css(item["display_name"]), unsafe_allow_html=True)    # האות של בעל השיחה
-            for message in db.load_messages(opened):
+            for message in (m for m in db.load_messages(opened) if not m.get("hidden")):
                 with st.chat_message(message["role"], avatar=avatar_for(message["role"])):
                     st.markdown(fix_bidi(message["content"]))
             questions = db.list_session_questions(opened)
