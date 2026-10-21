@@ -110,6 +110,12 @@ def update_employee_data(session_id: str,
     errors, updated, corrected = [], [], []
 
     def apply(target, field, value, label):
+        if target is state.employee:
+            state.sources[field] = "employee"          # מקור הנתון: העובד (נתוני תלוש מסומנים בנפרד ב-apply_payslip)
+        elif target is state.current:
+            state.sources["current_participation"] = "employee"
+        elif target is state.target:
+            state.sources["target_participation"] = "employee"
         old = getattr(target, field)
         if old is not None and old != value:
             show = lambda v: f"{v:g}" if isinstance(v, float) else str(v)  # 6.0 -> 6
@@ -622,6 +628,10 @@ def _side_summary(side: dict) -> dict:
         "income_tax": r(side["income_tax"]), "national_insurance_and_health": r(side["social_total"]),
         "pension": r(side["pension"]), "study_fund": r(side["study_fund"]),
         "participation": r(side["participation"]), "family_employee_share": r(side["family_employee_share"]),
+        # פירוט לתצוגת "איך חושב?" (backend/explain_calc.py)
+        "taxable_income": r(side["taxable_income"]), "tax_before_credits": r(side["tax_before_credits"]),
+        "credit_points_value": r(side["credit_points_value"]), "pension_credit": r(side["pension_credit"]),
+        "national_insurance": r(side["national_insurance"]), "health": r(side["health"]),
     }
 
 
@@ -815,10 +825,12 @@ def apply_representative_answers(session_id: str) -> list[dict]:
                 state.employee.group_conflict = None
         if value is not None:
             if field == "new_participation" and state.target.kind == "car":
+                state.sources["target_participation"] = "representative"
                 state.target.participation = float(value)
                 state.target.participation_status = "confirmed"
                 state.target.participation_effective_from = q["effective_from"]
             elif field == "current_participation":
+                state.sources["current_participation"] = "representative"
                 state.current.participation = float(value)
             elif field == "current_car_usage_value":
                 state.current.kind = "car"

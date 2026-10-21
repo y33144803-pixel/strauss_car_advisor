@@ -83,6 +83,8 @@ class ConversationState(BaseModel):
     pending_inquiry_car: dict[str, str] = Field(default_factory=dict)
     last_result: Optional[dict] = None
     result_is_stale: bool = False
+    # מקור כל נתון (מפתח: שם השדה): employee / payslip / representative. נתונים שמקורם בטבלאות (רכב, שווי שימוש) נגזרים מהמצב
+    sources: dict[str, str] = Field(default_factory=dict)
     # צילום המצב כפי שנטען מהמסד: השמירה כותבת רק את מה שהשתנה לעומתו (ראו db.save_state)
     _base: Optional[dict] = PrivateAttr(default=None)
 

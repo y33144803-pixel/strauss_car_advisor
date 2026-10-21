@@ -226,7 +226,14 @@ def apply_payslip(session_id: str, fields: dict) -> dict:
     occupation = fields.get("occupation")
     if isinstance(occupation, str) and find_occupation(occupation):
         values["occupation"] = occupation
-    return update_employee_data(session_id, **values)
+    outcome = update_employee_data(session_id, **values)
+    if outcome.get("ok"):
+        import db
+        state = db.load_state(session_id)
+        for key in values:                               # מקור הנתונים שנשמרו עכשיו: התלוש
+            state.sources[key] = "payslip"
+        db.save_state(state)
+    return outcome
 
 
 def summary_text(fields: dict) -> str:

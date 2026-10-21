@@ -76,6 +76,12 @@ def strauss_logo_html(folder: str = IMAGES_DIR) -> str:
 
 
 @functools.lru_cache(maxsize=4)
+def banner_logo_html(folder: str = IMAGES_DIR) -> str:
+    """לוגו הבאנר: התמונה המשולבת של שטראוס ו-CarBot (images/logo-1-banner.jpg, חיתוך של logo-1.jpg). אין קובץ - מחרוזת ריקה."""
+    return _embedded_image(folder, "logo-1-banner", "cb-banner-img", "CarBot - יועץ הרכב של שטראוס")
+
+
+@functools.lru_cache(maxsize=4)
 def bot_icon_html(folder: str = IMAGES_DIR) -> str:
     """אייקון הלוגו: הרובוט מתמונת הלוגו (images/carbot-icon.png, נוצר ע"י scripts/make_logo_icon.py). אין - הרובוט המצויר."""
     return _embedded_image(folder, "carbot-icon", "cb-icon cb-icon-img", "CarBot") or BOT_ICON_SVG
@@ -264,6 +270,19 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-
 .st-key-topbar .nav-pill.active * { color: #fff; }
 .st-key-user-menu [data-testid="stPopoverButton"], .st-key-user-menu [data-testid="stPopoverButton"] * { color: var(--primary); }
 .st-key-user-menu [data-testid="stPopoverButton"]:hover { background: rgba(124,58,168,.10) !important; }
+/* לוגו התמונה (logo-1) במרכז הבאנר, עם רקע עדין ופס צבעוני בתחתית */
+.st-key-topbar { min-height: 92px; padding-top: 10px; padding-bottom: 12px;
+                 background: linear-gradient(180deg, #fff 0%, #FBF7FE 100%); }
+.st-key-topbar::after { height: 7px; background: linear-gradient(90deg, #E0489E, #7C3AA8 50%, #2E86DE); }
+.carbot-logo .cb-banner-img { height: 70px; width: auto; max-width: 62vw; object-fit: contain; mix-blend-mode: multiply;
+                              border: 0 !important; box-shadow: none !important; border-radius: 0 !important; }
+.block-container { padding-top: 7.2rem; }
+@media (max-width: 1000px) { .carbot-logo .cb-banner-img { height: 56px; } }
+@media (max-width: 700px) {
+  .st-key-topbar { min-height: 70px; padding-top: 6px; padding-bottom: 8px; }
+  .carbot-logo .cb-banner-img { height: 42px; }
+  .block-container { padding-top: 5.4rem; }
+}
 
 /* כפתור העתקה מתחת לכל בועת הודעה: הסוכן - בצד שמאל, העובדת - בצד ימין */
 [data-testid="stChatMessage"] { position: relative; margin-bottom: 1.9rem; }
@@ -290,7 +309,7 @@ div.st-key-chatbox-btn.st-key-chatbox-btn { height: calc(100vh - 440px) !importa
 div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-chatbox-picker) { flex: 0 0 auto !important; height: auto !important; }
 
 /* כשההשוואה ארוכה והדף גולל, עמודת השיחה נשארת במקומה (דבוקה מתחת לבאנר) ולא נגללת למעלה */
-[data-testid="stColumn"]:has(.st-key-chatbox, .st-key-chatbox-btn, .st-key-chatbox-picker) { align-self: flex-start; position: sticky; top: 5.9rem; }
+[data-testid="stColumn"]:has(.st-key-chatbox, .st-key-chatbox-btn, .st-key-chatbox-picker) { align-self: flex-start; position: sticky; top: 6.9rem; }
 
 /* תיבת הכתיבה באותו רוחב כמו עמודת השיחה (3 מתוך 5, פחות הרווח בין העמודות), צמודה לצד הימני */
 [data-testid="stBottomBlockContainer"] [data-testid="stChatInput"] { width: calc((100% - 2rem) * 0.6); margin-right: 0; margin-left: auto; }
@@ -324,9 +343,9 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 .st-key-chat-list button p { padding-left: 34px; }
 
 /* פאנל הצד: "הנתונים שנקלטו עד כה" */
-[data-testid="stSidebarContent"] { padding-top: 7.6rem; position: relative; }
+[data-testid="stSidebarContent"] { padding-top: 8.6rem; position: relative; }
 /* כפתור סגירת הסרגל (נוצר ב-JS) בראש הסרגל, מעל "שיחה חדשה" */
-#close-sidebar-btn { position: absolute; top: 5.2rem; left: 1rem; width: 30px; height: 30px; border: 0; padding: 0;
+#close-sidebar-btn { position: absolute; top: 6.2rem; left: 1rem; width: 30px; height: 30px; border: 0; padding: 0;
     border-radius: 50%; background: var(--soft); color: var(--primary); font-weight: 700; font-size: 1rem; cursor: pointer; }
 #close-sidebar-btn:hover { background: #EBDDF5; }
 /* סרגל צר יחסית (שם ארוך יורד לשורה שנייה במקום להיחתך); נפתח ונסגר בכפתור הצף */
@@ -347,6 +366,15 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 .state-row:last-child { border-bottom: 0; }
 .state-row .k { color: var(--muted); white-space: nowrap; }
 .state-row .v { font-weight: 700; color: var(--ink); text-align: left; unicode-bidi: plaintext; }
+.state-row .v .src { display: block; font-weight: 400; font-size: .72rem; color: var(--muted); text-align: left; }
+.calc-table { width: 100%; border-collapse: collapse; font-size: .85rem; direction: rtl; }
+.calc-table th { text-align: right; color: var(--muted); font-weight: 600; border-bottom: 2px solid var(--line); padding: 6px 8px; }
+.calc-table td { border-bottom: 1px solid var(--line); padding: 6px 8px; vertical-align: top; }
+.calc-table td.num { white-space: nowrap; text-align: left; direction: ltr; font-weight: 600; }
+.calc-table .rule { color: var(--muted); font-size: .72rem; font-weight: 400; margin-top: 2px; direction: rtl; unicode-bidi: plaintext; }
+.calc-table tr.total .rule { color: var(--primary); }
+.calc-table tr.total td { font-weight: 800; background: var(--soft); color: var(--primary); }
+.calc-check { margin-top: 8px; font-size: .85rem; color: var(--good); font-weight: 600; }
 .state-row.empty .v { font-weight: 400; font-style: italic; color: #9A95A8; }
 .state-row.filled .k::before { content: "✓ "; color: var(--good); font-weight: 700; }
 .state-row.empty .k::before { content: "○ "; color: #B7B2C4; }
@@ -532,9 +560,12 @@ def topbar(pages: list, current, user: dict | None = None) -> None:
     pages - דפי st.navigation המותרים; current - הדף הפעיל (מסומן בלבן, ולא כקישור).
     כשמשתמש מחובר: כפתור "יציאה". הקיבוע נעשה ב-CSS לפי המפתח "topbar"."""
     with st.container(key="topbar"):
-        st.markdown(f"<div class='carbot-logo'>{strauss_logo_html()}{bot_icon_html()}<div class='cb-text'>"
+        logo = banner_logo_html()
+        if not logo:                                 # אין תמונת לוגו: הלוגו המורכב מאייקון וטקסט
+            logo = (f"{strauss_logo_html()}{bot_icon_html()}<div class='cb-text'>"
                     "<div class='cb-name'><span class='cb-car'>Car</span><span class='cb-bot'>Bot</span></div>"
-                    "<div class='cb-sub'>יועץ הרכב של שטראוס</div></div></div>", unsafe_allow_html=True)
+                    "<div class='cb-sub'>יועץ הרכב של שטראוס</div></div>")
+        st.markdown(f"<div class='carbot-logo'>{logo}</div>", unsafe_allow_html=True)
         _, nav = st.columns([6.6, 3.4], vertical_alignment="center")      # העמודה הימנית ריקה: הלוגו במרכז הוא הכותרת
         with nav:
             if not pages:                            # מסך הכניסה והמשתמשים המחוברים: הבאנר בלי כפתורי ניווט
@@ -608,16 +639,47 @@ def state_progress(state) -> tuple[int, int]:
     return sum(slots), len(slots)
 
 
+SOURCE_TEXT = {"employee": "מהעובד", "payslip": "מהתלוש", "representative": "מהנציג"}
+
+
+def state_sources(state) -> dict[str, str]:
+    """מקור כל נתון בכרטיס ("מהעובד", "מהתלוש", "מהנציג", "מטבלת רשות המסים"...): מדגים שאין נתון שהומצא."""
+    emp, cur, tgt, src = state.employee, state.current, state.target, state.sources
+    out = {}
+    group = {"employee": "מהעובד", "occupation": "לפי העיסוק בטבלה", "representative": "מהנציג"}.get(emp.group_source)
+    if group:
+        out["קבוצת זכאות"] = group
+    for label, field in (("שכר בסיס", "base_salary"), ("עמלות", "commissions"), ("בונוס", "bonus"),
+                         ("פנסיה (עובד)", "pension_rate"), ("קרן השתלמות (עובד)", "study_fund_rate"),
+                         ("נקודות זיכוי", "credit_points"), ("עיסוק", "occupation"), ("ילדים עד גיל 23", "children_under_23")):
+        out[label] = SOURCE_TEXT.get(src.get(field, "employee"), "מהעובד")
+    if cur.kind == "car":
+        out["רכב נוכחי"] = ("מקטלוג החברה" if cur.catalog_id else
+                            "מהנציג" if "לפי הנציג" in (cur.label or "") else "מטבלת רשות המסים")
+        out["השתתפות ברכב הנוכחי"] = SOURCE_TEXT.get(src.get("current_participation", "employee"), "מהעובד")
+    elif cur.kind in ("waiver", "none"):
+        out["רכב נוכחי"] = "מהעובד"
+    if tgt.kind == "car":
+        out["חלופה מבוקשת"] = "מקטלוג החברה"
+        out["השתתפות ברכב החדש"] = ("ברירת מחדל מהקטלוג, ממתין לנציג" if tgt.participation_status == "provisional"
+                                    else SOURCE_TEXT.get(src.get("target_participation"), "מקטלוג החברה"))
+    elif tgt.kind == "waiver":
+        out["חלופה מבוקשת"] = "לפי טבלת העיסוקים"
+    return out
+
+
 def state_card_html(state) -> str:
-    """כרטיס "הנתונים שנקלטו עד כה": שדות ריקים ("טרם הוזן") שמתמלאים ככל שהשיחה מתקדמת."""
+    """כרטיס "הנתונים שנקלטו עד כה": שדות ריקים ("טרם הוזן") שמתמלאים ככל שהשיחה מתקדמת, ולכל נתון - מקורו."""
     rows = []
+    sources = state_sources(state)
     for label, value in state_rows(state):
         if value is None:
             rows.append(f"<div class='state-row empty'><span class='k'>{html.escape(label)}</span>"
                         "<span class='v'>טרם הוזן</span></div>")
         else:
+            source = f"<small class='src'>{html.escape(sources[label])}</small>" if label in sources else ""
             rows.append(f"<div class='state-row filled'><span class='k'>{html.escape(label)}</span>"
-                        f"<span class='v'>{html.escape(str(value))}</span></div>")
+                        f"<span class='v'>{html.escape(str(value))}{source}</span></div>")
     note = ""
     if state.waiting_for_representative:
         note = "<div class='state-hint'>⏳ ממתין לתשובת נציג התחבורה</div>"
@@ -1045,6 +1107,33 @@ def typing_status_html(label: str) -> str:
     return f"<span class='typing-status' style='--n:{max(len(label), 1)}'>{html.escape(label)}</span>"
 
 
+_ALWAYS_SHOWN = {"gross_salary", "income_tax", "net"}
+
+
+def calc_breakdown_html(result: dict) -> str:
+    """טבלת "איך חושב?": כל שלב בנטו, בשני המצבים, והכלל בקובץ ההגדרות שהפעיל אותו. בנויה מתוצאת החישוב עצמה."""
+    from data_store import get_rules
+    from explain_calc import breakdown, check
+    cells = lambda v: "—" if v is None else _money(v)
+    body = []
+    for row in breakdown(result, get_rules()):
+        if row["key"] not in _ALWAYS_SHOWN and not row["today"] and not row["alt"]:
+            continue                                   # שורה שאינה רלוונטית לשני המצבים לא מוצגת
+        sign = f"{row['sign']} " if row["sign"] else ""
+        css = " class='total'" if row["key"] == "net" else ""
+        rule = f"<div class='rule'>{html.escape(row['rule'])}</div>" if row["rule"] else ""
+        body.append(f"<tr{css}><td>{html.escape(sign + row['label'])}{rule}</td><td class='num'>{cells(row['today'])}</td>"
+                    f"<td class='num'>{cells(row['alt'])}</td></tr>")
+    verdict = check(result)
+    note = ""
+    if verdict["ok"]:
+        note = ("<div class='calc-check'>✓ השורות מסתכמות לנטו המוצג (כל שורה מעוגלת לשקל, ולכן ייתכנו הפרשי עיגול של כמה שקלים)</div>")
+    elif verdict["ok"] is None:
+        note = "<div class='cmp-note'>הפירוט המלא יופיע אחרי חישוב מחדש של ההשוואה.</div>"
+    head = "<tr><th>שלב בחישוב (ומתחתיו הכלל / המקור)</th><th>היום</th><th>החלופה</th></tr>"
+    return f"<table class='calc-table'><thead>{head}</thead><tbody>{''.join(body)}</tbody></table>{note}"
+
+
 def render_comparison(result: dict, stale: bool = False) -> None:
     """כרטיס ההשוואה המלא: מדדים, טבלה, זכאות והסבר."""
     alt = result["alternative"]
@@ -1070,6 +1159,8 @@ def render_comparison(result: dict, stale: bool = False) -> None:
     st.markdown("**למה זה משתנה?**")
     show_markdown(result["explanation"].replace("\n", "  \n"))
     st.caption("ההערכה לפי כללי המדיניות ולוחות המס שבקובץ ההגדרות, ואינה תחליף לתלוש השכר.")
+    with st.expander("איך חושב?"):
+        st.markdown(calc_breakdown_html(result), unsafe_allow_html=True)
 
     copy_col, download_col = st.columns(2)
     with copy_col:

@@ -127,7 +127,7 @@ def _connect():
         return _connect_postgres(url)
     path = db_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, timeout=30)          # ממתין לנעילה עד 30 שניות (ברירת המחדל 5 נכשלת בעומס)
     conn.row_factory = sqlite3.Row
     return conn
 

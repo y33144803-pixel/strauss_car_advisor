@@ -710,3 +710,27 @@ def test_rejected_eligibility_check_does_not_reopen_the_picker():
     assert picker["visible"] is False and picker["can_reopen"] is True   # לא נפתח מעצמו, אפשר לפתוח בכפתור
     set_picker(SID, True)
     assert picker_state(SID)["visible"] is True
+
+
+def test_breakdown_rows_sum_to_the_net_and_cite_the_rules():
+    from data_store import get_rules
+    from explain_calc import breakdown, check
+    update_employee_data(SID, eligibility_group="ג", base_salary=18500, commissions=0, bonus=0, pension_rate=6,
+                         study_fund_rate=2.5, credit_points=2.25)
+    set_current_situation(SID, "none")
+    verify_budget_and_eligibility(SID, "CAR-10")
+    calculate_net_salary(SID)
+    result = db.load_state(SID).last_result
+    assert check(result)["ok"] is True                       # הפירוט מסתכם לנטו (עד עיגול)
+    rows = {r["key"]: r for r in breakdown(result, get_rules())}
+    assert rows["net"]["today"] == result["net_today"] and rows["net"]["alt"] == result["net_alternative"]
+    assert "netMethod.creditPointValue" in rows["credit_points_value"]["rule"]      # כל שורה מצביעה על הכלל
+    assert "netMethod.brackets" in rows["tax_before_credits"]["rule"]
+
+
+def test_data_sources_are_tracked_per_field():
+    update_employee_data(SID, base_salary=15000, pension_rate=6)
+    from payslip import apply_payslip
+    apply_payslip(SID, {"commissions": 1000.0})
+    state = db.load_state(SID)
+    assert state.sources["base_salary"] == "employee" and state.sources["commissions"] == "payslip"

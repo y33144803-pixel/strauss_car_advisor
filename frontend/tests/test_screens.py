@@ -625,7 +625,7 @@ def test_data_card_becomes_a_collapsed_dropdown_while_comparison_is_shown():
     assert "הנתונים שנקלטו עד כה" in sidebar_text(only_data)
 
     both = employee_app(show_comparison=True, show_data=True)
-    assert [e.label for e in both.expander] == ["הצג נתונים"]          # עם השוואה: תיבה נפתחת
+    assert [e.label for e in both.expander] == ["הצג נתונים", "איך חושב?"]    # עם השוואה: תיבה נפתחת + פירוט החישוב
     assert both.expander[0].proto.expanded is False                     # סגורה כברירת מחדל
     assert "הנתונים שנקלטו עד כה" in " ".join(m.value for m in both.expander[0].markdown)
 
