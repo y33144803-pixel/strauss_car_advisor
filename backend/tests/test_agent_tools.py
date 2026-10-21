@@ -697,3 +697,16 @@ def test_english_make_name_finds_the_hebrew_listing():
     r = agent_tools.find_current_car("alias1", "Jaguar", 2010)
     assert r["ok"] and r["data"]["candidates"]
     assert agent_tools.find_current_car("alias2", "jaguar XF", 2011)["ok"]
+
+
+def test_rejected_eligibility_check_does_not_reopen_the_picker():
+    from actions import picker_state, set_picker
+    update_employee_data(SID, eligibility_group="א")
+    set_current_situation(SID, "none")
+    assert picker_state(SID)["visible"]                                  # לפני שביקש רכב מסוים: הבורר פתוח כרגיל
+    result = verify_budget_and_eligibility(SID, "CAR-10")                # רכב מקבוצה ג - נדחה (או חסר נתון)
+    assert db.load_state(SID).target.kind is None
+    picker = picker_state(SID)
+    assert picker["visible"] is False and picker["can_reopen"] is True   # לא נפתח מעצמו, אפשר לפתוח בכפתור
+    set_picker(SID, True)
+    assert picker_state(SID)["visible"] is True

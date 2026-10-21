@@ -464,7 +464,18 @@ def show_catalog(session_id: str) -> dict:
 
 
 def verify_budget_and_eligibility(session_id: str, choice: str) -> dict:
-    """בדיקת זכאות לחלופה (מזהה רכב או 'ויתור'). אם מאושרת - נשמרת כחלופה המבוקשת."""
+    """בדיקת זכאות לחלופה (מזהה רכב או 'ויתור'). אם מאושרת - נשמרת כחלופה המבוקשת.
+    כשהבדיקה לא הסתיימה בבחירת חלופה (נדחתה, חסר נתון או הרכב לא נמצא) הבורר לא נפתח מחדש מעצמו:
+    העובד ביקש רכב מסוים ולא נתבקש לבחור, והוא יכול לפתוח אותו ב"בחירת רכב אחר"."""
+    result = _verify_budget_and_eligibility(session_id, choice)
+    state = db.load_state(session_id)
+    if state.target.kind is None and not state.picker_dismissed:
+        state.picker_dismissed = True
+        db.save_state(state)
+    return result
+
+
+def _verify_budget_and_eligibility(session_id: str, choice: str) -> dict:
     state = db.load_state(session_id)
     group = state.employee.eligibility_group
     if group is None:

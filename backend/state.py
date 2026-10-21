@@ -74,6 +74,8 @@ class ConversationState(BaseModel):
     current: CurrentSituation = Field(default_factory=CurrentSituation)
     target: TargetChoice = Field(default_factory=TargetChoice)
     car_candidates: list[dict] = Field(default_factory=list)  # תוצאות חיפוש הרכב הנוכחי לבחירת העובד
+    # בדיקת זכאות שלא הסתיימה בבחירת חלופה (נדחתה / חסר נתון) לא פותחת את הבורר מחדש; נפתח רק בבקשה (picker_open)
+    picker_dismissed: bool = False
     picker_open: bool = False  # בורר הרכבים שמעל תיבת השיחה פתוח (נפתח ע"י הכלי show_catalog או ע"י העובד)
     waiting_for_representative: bool = False
     pending_questions: dict[str, int] = Field(default_factory=dict)  # שדה חסר -> מזהה שאלה פתוחה לנציג

@@ -32,7 +32,7 @@ def picker_state(session_id: str) -> dict | None:
     return {
         "cars": catalog["cars"],
         "waiver_allowed": catalog["waiver_allowed"],
-        "visible": state.target.kind is None or state.picker_open,
+        "visible": (state.target.kind is None and not state.picker_dismissed) or state.picker_open,
         "closable": state.target.kind is not None,
         "can_reopen": state.target.kind != "waiver",     # בוויתור אין כפתור "בחירת רכב אחר" - הממשק נקי
         "as_table": len(catalog["cars"]) > PICKER_BUTTONS_MAX,
