@@ -521,3 +521,28 @@ def test_cash_out_and_saved_claim_patterns_are_not_too_broad():
     assert _CASH_OUT_RE.search("אפשר לקבל כסף על הרכב?") and _CASH_OUT_RE.search("אני לא משתמש בכל תקציב הרכב - אפשר לקבל את ההפרש כמזומן?")
     assert not _SAVED_CLAIM_RE.search("הנתונים נשמרים רק לצורך השיחה")
     assert _SAVED_CLAIM_RE.search("שמרתי את השכר") and _SAVED_CLAIM_RE.search("הנתון נשמר.")
+
+
+def test_rep_note_next_to_an_amount_is_hidden_from_the_employee_but_given_to_the_bot(monkeypatch):
+    import agent
+    monkeypatch.setattr(agent, "apply_representative_answers", lambda sid: [
+        {"field": "השתתפות העובד ברכב החדש", "value": 300.0, "effective_from": None, "note": "חריג, לפי הסכם אישי", "car": None}])
+    monkeypatch.setattr(agent, "_continuation_line", lambda sid: "נמשיך.")
+    text = agent.check_representative_updates(SID)
+    assert "הסכם אישי" not in text and "300" in text                      # העובד לא רואה את ההערה
+    saved = db.load_messages(SID)[-1]
+    assert "הסכם אישי" in saved["bot_note"]
+    history = agent._history_messages([saved])
+    assert "הסכם אישי" in history[0].content                               # המודל כן מקבל אותה
+
+
+def test_rep_answer_without_an_amount_triggers_a_hidden_bot_turn(monkeypatch):
+    import agent
+    monkeypatch.setattr(agent, "apply_representative_answers", lambda sid: [
+        {"field": "שווי שימוש של הרכב הנוכחי", "value": None, "effective_from": None, "note": "אין רכב כזה", "car": None}])
+    agent.check_representative_updates(SID)
+    last = db.load_messages(SID)[-1]
+    assert last["role"] == "user" and last["hidden"] and "אין רכב כזה" in last["content"]
+    assert agent.pending_user_message(SID)                                 # יש הודעה שממתינה: המסך מפעיל תור של הבוט
+    assert "אין רכב כזה" in agent._history_messages([last])[0].content    # המודל מקבל את ההערה
+    assert db._summary(db.load_messages(SID))[1] == sum(1 for m in db.load_messages(SID) if m["role"] == "user" and not m.get("hidden"))

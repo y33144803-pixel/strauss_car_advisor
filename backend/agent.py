@@ -224,7 +224,10 @@ def _system_message(session_id: str):
 def _history_messages(messages: list[dict]) -> list:
     from llama_index.core.llms import ChatMessage, MessageRole
     roles = {"user": MessageRole.USER, "assistant": MessageRole.ASSISTANT}
-    return [ChatMessage(role=roles[m["role"]], content=m["content"])
+    # הערת נציג לבוט ("bot_note") לא מוצגת לעובד, אבל נכללת בהקשר שהמודל מקבל
+    return [ChatMessage(role=roles[m["role"]],
+                        content=m["content"] + (f"\n\n[הערת הנציג - לשימושך בלבד, אל תצטט/י אותה לעובד: {m['bot_note']}]"
+                                                if m.get("bot_note") else ""))
             for m in messages[-HISTORY_LIMIT:] if m["role"] in roles]
 
 
@@ -243,7 +246,7 @@ def picker_context_note(messages: list[dict]) -> str | None:
         return None
     earlier = messages[:-1]
     last_assistant = next((m for m in reversed(earlier) if m["role"] == "assistant"), None)
-    last_typed = next((m for m in reversed(earlier) if m["role"] == "user"
+    last_typed = next((m for m in reversed(earlier) if m["role"] == "user" and not m.get("hidden")
                        and not PICKER_MESSAGE.match(m["content"].strip())), None)
     if not last_assistant or not last_typed or earlier.index(last_typed) < earlier.index(last_assistant) - 1:
         return None
@@ -279,9 +282,14 @@ def check_representative_updates(session_id: str) -> str | None:
     events = apply_representative_answers(session_id)
     if not events:
         return None
-    lines = []
+    lines, bot_notes, no_amount = [], [], []
     for ev in events:
         if "field" in ev:
+            if ev["value"] is None and ev["field"] != REP_FIELDS["eligibility_group"]:
+                # תשובה בלי סכום (למשל "הרכב לא קיים", או שאלת "אחר"): ההערה מיועדת לבוט, והוא מחליט מה לומר לעובד
+                no_amount.append(f"{ev['field']}" + (f" ({ev['car']})" if ev.get("car") else "")
+                                 + (f": {ev['note']}" if ev.get("note") else " (ללא הערה)"))
+                continue
             text = "הנציג ענה" if ev["field"] == REP_FIELDS["other"] else f"הנציג ענה לגבי {ev['field']}"
             text += f" ({ev['car']})" if ev.get("car") else ""
             if ev["value"] is not None:
@@ -289,15 +297,32 @@ def check_representative_updates(session_id: str) -> str | None:
             if ev.get("effective_from"):
                 text += f", בתוקף מ-{ev['effective_from']}"
             if ev.get("note"):
-                text += f" ({ev['note']})" if ev["value"] is not None else f": {ev['note']}"
+                if ev["value"] is not None:
+                    bot_notes.append(f"{ev['field']}: {ev['note']}")      # הערה לצד סכום: לבוט בלבד
+                else:
+                    text += f": {ev['note']}"                                 # תשובה בטקסט (למשל "אחר"): היא עצמה התשובה
             lines.append(text + ".")
-    recalculated = next((ev["recalculated"] for ev in events if "recalculated" in ev), None)
-    if recalculated:
-        lines.append("\nהנה ההשוואה המעודכנת:\n\n" + format_result_message(recalculated))
-    else:
-        lines.append(_continuation_line(session_id))
-    message = "\n".join(lines)
-    db.append_messages(session_id, [{"role": "assistant", "content": message, "source": "representative"}])
+    new_messages, message = [], None
+    if lines:
+        recalculated = next((ev["recalculated"] for ev in events if "recalculated" in ev), None)
+        if recalculated:
+            lines.append("\nהנה ההשוואה המעודכנת:\n\n" + format_result_message(recalculated))
+        else:
+            lines.append(_continuation_line(session_id))
+        message = "\n".join(lines)
+        entry = {"role": "assistant", "content": message, "source": "representative"}
+        if bot_notes:
+            entry["bot_note"] = "; ".join(bot_notes)
+        new_messages.append(entry)
+    if no_amount:
+        # הודעת מערכת נסתרת (לא מוצגת לעובד) שמפעילה תור של הבוט: הוא מבין מההערה מה קרה ומסביר לעובד במילים שלו
+        message = message or "הנציג ענה."
+        new_messages.append({"role": "user", "hidden": True, "content": (
+            "[הודעת מערכת, לא מהעובד] נציג התחבורה ענה בלי למסור סכום: " + "; ".join(no_amount) + ". "
+            "ההערה מיועדת לך בלבד - אל תצטט/י אותה ואל תעתיק/י אותה לעובד. אל תניח/י שהשווי או ההשתתפות הם 0 "
+            "ואל תשמור/י ערך כלשהו על סמך התשובה. החלט/י לפי ההערה מה לומר לעובד ומה לעשות (למשל לבקש לבדוק שוב את שם הרכב "
+            "ושנת הרישום, להציע רכב אחר, או להמשיך בנתונים הקיימים), והסבר/י לו בקצרה במילים שלך.")})
+    db.append_messages(session_id, new_messages)
     return message
 
 
@@ -319,7 +344,7 @@ def _numbers(text: str) -> set[float]:
 
 def _evidence(session_id: str, messages: list[dict], tool_log: list[dict]) -> set[float]:
     """כל המספרים שמותר לבוט להזכיר: מהעובד, מתוצאות כלים ומהמצב השמור."""
-    text = " ".join(m["content"] for m in messages if m["role"] == "user")
+    text = " ".join(m["content"] for m in messages if m["role"] == "user" and not m.get("hidden"))
     text += json.dumps([t["output"] for t in tool_log], ensure_ascii=False)
     text += state_snapshot(session_id)
     return _numbers(text)

@@ -628,13 +628,15 @@ def test_representative_answers_eligibility_group():
     assert db.load_state(SID).employee.group_source == "representative"
 
 
-def test_free_text_representative_answer_is_phrased_naturally():
+def test_free_text_representative_answer_goes_to_the_bot_not_to_the_employee():
     from agent import check_representative_updates
     db.append_messages(SID, [{"role": "user", "content": "לא יודע"}])
     assert request_representative_info(SID, "other", "שאלה כלשהי", True)["ok"]
     db.answer_question(db.list_questions("open")[0]["id"], None, None, "t", answered_by="rep")
-    message = check_representative_updates(SID)
-    assert message.startswith("הנציג ענה: t") and "אחר" not in message.split("\n")[0]
+    check_representative_updates(SID)
+    last = db.load_messages(SID)[-1]
+    assert last["role"] == "user" and last["hidden"] and "t" in last["content"]      # הודעת מערכת נסתרת: הבוט יגיב לעובד
+    assert not any(m["role"] == "assistant" and m.get("source") == "representative" for m in db.load_messages(SID))
 
 
 def test_unknown_occupation_error_never_lists_the_whole_table():
@@ -688,3 +690,10 @@ def test_word_representative_alone_is_not_a_request_to_ask_the_rep():
     import agent_tools
     assert not agent_tools._UNKNOWN_RE.search("הנציג אמר לי שזה 300")
     assert agent_tools._UNKNOWN_RE.search("תשאל את הנציג") and agent_tools._UNKNOWN_RE.search("אני לא יודע")
+
+
+def test_english_make_name_finds_the_hebrew_listing():
+    import agent_tools
+    r = agent_tools.find_current_car("alias1", "Jaguar", 2010)
+    assert r["ok"] and r["data"]["candidates"]
+    assert agent_tools.find_current_car("alias2", "jaguar XF", 2011)["ok"]

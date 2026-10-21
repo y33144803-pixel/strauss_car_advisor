@@ -79,7 +79,7 @@
         "properties": {
           "commercial_name": {
             "type": "string",
-            "description": "השם המסחרי של הרכב באנגלית כפי שהעובד מסר, למשל 'COROLLA CROSS' או 'TUCSON'"
+            "description": "היצרן והדגם של הרכב בדיוק כפי שהעובד כתב (בעברית או באנגלית, ללא תרגום), למשל 'COROLLA CROSS', 'TUCSON' או 'יגואר'. אם העובד כתב רק יצרן - מעבירים רק אותו"
           },
           "registration_year": {
             "type": "integer",

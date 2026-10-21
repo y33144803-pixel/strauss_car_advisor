@@ -68,7 +68,7 @@ def stated_numbers(session_id: str) -> set[float]:
     """כל המספרים שהעובד כתב בשיחה (גם "12K" / "12 אלף" -> 12000, וגם "2,25" -> 2.25 ו-225)."""
     found: set[float] = set()
     for message in db.load_messages(session_id):
-        if message["role"] != "user":
+        if message["role"] != "user" or message.get("hidden"):
             continue
         for raw, suffix in _NUMBER_TOKEN.findall(message["content"]):
             candidates = {raw.replace(",", ""), raw.replace(",", ".")}
@@ -438,7 +438,7 @@ def current_situation_known(state: ConversationState) -> bool:
 
 def _employee_asked_for_waiver(session_id: str) -> bool:
     """האם ההודעה האחרונה של העובד ביקשה ויתור על רכב (בטקסט חופשי או בלחיצה): אז לא פותחים בורר רכבים."""
-    last = next((m["content"] for m in reversed(db.load_messages(session_id)) if m["role"] == "user"), "")
+    last = next((m["content"] for m in reversed(db.load_messages(session_id)) if m["role"] == "user" and not m.get("hidden")), "")
     return "ויתור" in last or "לוותר" in last
 
 
@@ -713,7 +713,7 @@ _UNKNOWN_RE = re.compile(
 
 def _employee_said_unknown(session_id: str, last: int = 3) -> bool:
     """האם באחת מ-3 הודעות העובד האחרונות הוא אמר שאינו יודע את הנתון (או ביקש לברר מול הנציג)."""
-    user_messages = [m["content"] for m in db.load_messages(session_id) if m["role"] == "user"][-last:]
+    user_messages = [m["content"] for m in db.load_messages(session_id) if m["role"] == "user" and not m.get("hidden")][-last:]
     return any(_UNKNOWN_RE.search(text) for text in user_messages)
 
 

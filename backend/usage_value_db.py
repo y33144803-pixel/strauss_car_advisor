@@ -95,6 +95,22 @@ def get_usage_value(tax_year, registration_year, car_type_code, make_code, model
     return result
 
 
+# שמות יצרנים באנגלית -> כתיב עברי במאגר (העובד או המודל עלולים לכתוב "Jaguar" במקום "יגואר")
+MAKE_ALIASES = {
+    "JAGUAR": ["יגואר"], "TOYOTA": ["טויוטה"], "HYUNDAI": ["יונדאי"], "KIA": ["קיה"], "MAZDA": ["מזדה"],
+    "HONDA": ["הונדה"], "NISSAN": ["ניסאן"], "SUZUKI": ["סוזוקי"], "SUBARU": ["סובארו"], "MITSUBISHI": ["מיצובישי"],
+    "LEXUS": ["לקסוס"], "VOLKSWAGEN": ["פולקסווגן", "פולקסוגן"], "VW": ["פולקסווגן", "פולקסוגן"], "SKODA": ["סקודה"],
+    "SEAT": ["סיאט"], "AUDI": ["אאודי", "אודי"], "BMW": ["ב.מ.וו", "במוו"], "MERCEDES": ["מרצדס"], "BENZ": ["מרצדס"],
+    "OPEL": ["אופל"], "FORD": ["פורד"], "CHEVROLET": ["שברולט"], "RENAULT": ["רנו"], "PEUGEOT": ["פיגו", "פיג'ו"],
+    "CITROEN": ["סיטרואן"], "FIAT": ["פיאט"], "VOLVO": ["וולוו", "וולבו"], "TESLA": ["טסלה"], "BYD": ["בי ווי די"],
+    "MG": ["מ.ג"], "CHERY": ["צ'רי"], "GEELY": ["ג'ילי", "גילי"], "JEEP": ["ג'יפ"], "PORSCHE": ["פורשה"],
+    "MINI": ["מיני"], "DACIA": ["דאציה", "דאצ'יה"], "CUPRA": ["קופרה"], "ALFA": ["אלפא", "אלפה"], "LANDROVER": ["לנדרובר"],
+    "ROVER": ["רובר"], "SSANGYONG": ["סאנגיונג"], "ISUZU": ["איסוזו"], "SMART": ["סמארט"], "POLESTAR": ["פולסטאר"],
+    "CADILLAC": ["קאדילאק", "קדילאק"], "CHRYSLER": ["קרייזלר"], "DODGE": ["דודג'"], "LOTUS": ["לוטוס"],
+    "MASERATI": ["מזארטי"], "FERRARI": ["פרארי"], "LAMBORGHINI": ["למבורגיני"], "BENTLEY": ["בנטלי"],
+}
+
+
 def name_matches(query: str, make_name: str, commercial_name: str) -> bool:
     """התאמה חלקית ורפויה של טקסט שהעובד הקליד לרכב: כל מילה בטקסט צריכה להופיע ביצרן או בשם המסחרי
     (בכל סדר, ללא תלות באותיות). כך "BYD DOLPHIN" או "בי ווי די BYD DOLPHIN" או "מזדה 3" מוצאים את הרכב."""
@@ -102,7 +118,12 @@ def name_matches(query: str, make_name: str, commercial_name: str) -> bool:
     haystack = f"{make_name or ''} {commercial_name or ''}".upper()
     words = set(re.findall(r"[0-9A-Zא-ת]+", haystack))
     # מילה קצרה (למשל "3") חייבת להתאים למילה שלמה; מילה ארוכה מספיק שתופיע בתוך מילה (DOLPHIN, COROLLA)
-    return bool(tokens) and all(t in words if len(t) < 3 else t in haystack for t in tokens)
+    def found(token: str) -> bool:
+        if token in MAKE_ALIASES:                                    # "JAGUAR" = "יגואר"
+            return any(alias.upper() in haystack for alias in MAKE_ALIASES[token]) or token in haystack
+        return token in words if len(token) < 3 else token in haystack
+
+    return bool(tokens) and all(found(t) for t in tokens)
 
 
 def search_by_name(commercial_name: str, registration_year=None, *, tax_year, limit: int = 10) -> list[dict]:
