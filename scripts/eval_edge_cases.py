@@ -95,7 +95,7 @@ SCENARIOS = [
     ]),
     ("participation_deviation", FULL_FLOW + ["אני רוצה לבדוק את ATTO 3", "אני משתתפת ב-350 ₪ ברכב הזה"], [
         ("סכום שונה מהקטלוג נשמר כממתין לאישור (לא כמאושר)", lambda c: any(q["missing_field"] == "new_participation" for q in c["open_questions"])),
-        ("הבוט מסביר שהחישוב זמני ושהבקשה הועברה לאישור", lambda c: re.search(r"זמני|אישור|קצין|נציג", c["replies"][-1]) is not None),
+        ("הבוט מסביר שהחישוב זמני ושהבקשה הועברה לאישור", lambda c: re.search(r"זמני|אישור|נציג", c["replies"][-1]) is not None),
     ]),
     ("best_alternative", FULL_FLOW + ["איזו חלופה הכי משתלמת לי? תמצא לי את הכי טובה"], [
         ("הופעל הכלי best_alternatives", lambda c: "best_alternatives" in c["tools"]),
