@@ -90,7 +90,7 @@ def test_provisional_comparison_is_labeled_and_sidebar_options_exist():
     find_current_car(SID, "corolla cross", 2025)
     set_current_situation(SID, "car", candidate_number=1, participation=300)
     verify_budget_and_eligibility(SID, "CAR-10")
-    ask_rep("בדיקה")
+    update_employee_data(SID, new_participation=350)                  # סכום שונה מהקטלוג: ממתין לאישור הנציג
     at = employee_app(show_comparison=True)
     assert any("השוואת ביניים" in w.value for w in at.warning)
     assert any("ממתין לתשובה" in i.value or "ממתין" in i.value for i in at.info)
@@ -292,7 +292,7 @@ def test_state_card_starts_empty_and_fills_in_as_data_arrives():
     text = sidebar_text(at)
     assert "הנתונים שנקלטו עד כה" in text
     empty_before = text.count("טרם הוזן")
-    assert empty_before >= 9                                              # כל השדות ריקים בתחילת השיחה
+    assert empty_before >= 8                                              # כל השדות ריקים בתחילת השיחה (החלופה מופיעה רק אחרי בחירה)
 
     update_employee_data(SID, eligibility_group="ג", base_salary=14200, pension_rate=6)
     text = sidebar_text(employee_app(show_data=True))
