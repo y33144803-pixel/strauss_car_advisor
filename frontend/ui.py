@@ -453,6 +453,13 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 .cmp-table td.text { font-weight:600; }
 .cmp-table .sub { font-size:.8rem; color:var(--muted); }
 .cmp-table tr.total td { font-weight:800; font-size:1.05rem; background:var(--soft); border-top:2px solid var(--primary); }
+.rank-table { width:100%; border-collapse:collapse; font-size:.78rem; direction:rtl; table-layout:fixed; }
+.rank-table col.r-place { width:9%; } .rank-table col.r-label { width:49%; } .rank-table col.r-num { width:21%; }
+.rank-table th { background:var(--soft); color:var(--primary); padding:6px 5px; text-align:right; font-weight:700; white-space:nowrap; }
+.rank-table td { padding:6px 5px; border-bottom:1px solid var(--line); text-align:right; vertical-align:top; }
+.rank-table td.num { direction:ltr; text-align:right; white-space:nowrap; font-weight:600; }
+.rank-table td.text { font-weight:600; line-height:1.25; }
+.rank-table .sub { display:block; font-weight:400; font-size:.72rem; color:var(--muted); margin-top:2px; }
 .cmp-note { font-size:.85rem; color:var(--muted); margin:8px 0; }
 .empty-card { border:2px dashed var(--line); border-radius:14px; padding:28px 18px; text-align:center; color:var(--muted); }
 .empty-card .big { font-size:2.2rem; }
@@ -524,6 +531,10 @@ div.st-key-chatbox.st-key-chatbox, div.st-key-chatbox-btn.st-key-chatbox-btn, di
 /* תיבת הכתיבה: שדה מעוגל עם מסגרת סגולה, כפתור שליחה בגרדיאנט וכפתור הצירוף (+) בלבנדר */
 [data-testid="stChatInput"] { border: 1.5px solid rgba(109,47,160,.25); border-radius: 18px; background: #fff;
     box-shadow: 0 4px 14px rgba(77,29,117,.07); }
+/* השכבה הפנימית של Streamlit (רקע לבנדר ופינות 8px) ציירה תיבה שנייה בתוך התיבה שלנו */
+[data-testid="stChatInput"] > div { background: transparent !important; border-color: transparent !important; border-radius: 18px; }
+[data-testid="stChatInput"] textarea, [data-testid="stChatInput"] [data-baseweb="textarea"], [data-testid="stChatInput"] [data-baseweb="base-input"] {
+    background: transparent !important; border-color: transparent !important; }
 [data-testid="stChatInput"] [data-testid="stChatInputSubmitButton"] { background: linear-gradient(135deg, #C2378C, #6D2FA0);
     color: #fff; border-radius: 14px; }
 [data-testid="stChatInput"] [data-testid="stChatInputSubmitButton"] svg { color: #fff; fill: #fff; }
@@ -531,10 +542,6 @@ div.st-key-chatbox.st-key-chatbox, div.st-key-chatbox-btn.st-key-chatbox-btn, di
 .st-key-new_chat_button button { background: linear-gradient(135deg, #C2378C, #6D2FA0); border: 0; border-radius: 14px; font-weight: 800;
                                  min-height: 2.9rem; box-shadow: 0 8px 18px rgba(109,47,160,.3); }
 .st-key-new_chat_button button, .st-key-new_chat_button button * { color: #fff; }
-/* השכבה הפנימית של Streamlit (רקע לבנדר ופינות 8px) ציירה תיבה שנייה בתוך התיבה שלנו */
-[data-testid="stChatInput"] > div { background: transparent !important; border-color: transparent !important; border-radius: 18px; }
-[data-testid="stChatInput"] textarea, [data-testid="stChatInput"] [data-baseweb="textarea"], [data-testid="stChatInput"] [data-baseweb="base-input"] {
-    background: transparent !important; border-color: transparent !important; }
 .st-key-side-rail { background: linear-gradient(170deg, #3E1768 0%, #6D2FA0 60%, #A8338F 100%); border-radius: 24px; padding: 48px 22px 22px;
                     box-shadow: 0 22px 46px rgba(77,29,117,.36); }
 .st-key-side-rail h3, .st-key-side-rail h2 { color: #fff; }
@@ -590,13 +597,6 @@ div.st-key-chatbox.st-key-chatbox, div.st-key-chatbox-btn.st-key-chatbox-btn, di
 [class*="st-key-card-"] [data-testid="stFormSubmitButton"] button, [class*="st-key-card-"] [data-testid="stFormSubmitButton"] button * { color: #fff; }
 .ans-row { background: #FBF9FD; border-radius: 14px; padding: 12px 14px; margin-bottom: 8px; border-bottom: 0; }
 [data-testid="stExpander"] { border-radius: 24px; box-shadow: 0 14px 40px rgba(77,29,117,.10); border: 1px solid rgba(109,47,160,.08); }
-</style>
-"""
-
-
-COPY_BUTTON_JS = """
-(() => {                         // עטיפה: אחרת ההרצה השנייה של הסקריפט מצהירה שוב על doc ומקבלת שגיאה
-const doc = window.parent.document;
 /* כרטיסי השאלות במסך הנציג: פס צבעוני בצד, כותרת בולטת וריווח נעים; שאלה פתוחה בוורוד, שנענתה בירוק */
 [class*="st-key-card-q-"], [class*="st-key-card-a-"] { border-radius: 22px; margin-bottom: 14px; overflow: hidden; transition: box-shadow .2s ease, transform .2s ease; }
 [class*="st-key-card-q-"] { border-inline-start: 6px solid #C2378C !important; }
@@ -633,6 +633,13 @@ const doc = window.parent.document;
 /* כרטיס הכניסה הכהה: התוויות והכיתוב בהירים (הכלל הכללי של טפסים מעליו צובע אותם בכהה) */
 .st-key-logincard [data-testid="stWidgetLabel"] p, .st-key-logincard label { color: #E6DDF5 !important; }
 .st-key-logincard [data-testid="stMarkdownContainer"] { color: #E6DDF5; }
+</style>
+"""
+
+
+COPY_BUTTON_JS = """
+(() => {                         // עטיפה: אחרת ההרצה השנייה של הסקריפט מצהירה שוב על doc ומקבלת שגיאה
+const doc = window.parent.document;
 // חזרה לדף מה-Back-Forward Cache של הדפדפן: החיבור לשרת כבר סגור והדף נשאר מקפא/ריק - טוענים אותו מחדש
 if (!window.parent.__bfReload) {
   window.parent.__bfReload = true;
@@ -667,13 +674,6 @@ if (!window.parent.__sidebarGuard) {
     }
   }, 800);
 }
-if (!doc.__copyButtons) {
-  doc.__copyButtons = true;
-  const add = () => doc.querySelectorAll('[data-testid="stChatMessage"]').forEach(msg => {
-    if (msg.querySelector('.copy-msg')) return;
-    const btn = doc.createElement('button');
-    btn.className = 'copy-msg'; btn.type = 'button'; btn.title = 'העתקה'; btn.textContent = '⧉';
-    btn.onclick = async () => {
 // חלון שינוי שם / מחיקה בסרגל: ממוקם מתחת לשורה שלו, וקצהו הימני מעט בתוך השורה - כך שהוא בולט שמאלה מהסרגל
 if (!window.parent.__chatEditPlacer) {
   window.parent.__chatEditPlacer = true;
@@ -696,6 +696,13 @@ if (!window.parent.__chatEditPlacer) {
   doc.addEventListener('scroll', place, true);
   window.parent.addEventListener('resize', place);
 }
+if (!doc.__copyButtons) {
+  doc.__copyButtons = true;
+  const add = () => doc.querySelectorAll('[data-testid="stChatMessage"]').forEach(msg => {
+    if (msg.querySelector('.copy-msg')) return;
+    const btn = doc.createElement('button');
+    btn.className = 'copy-msg'; btn.type = 'button'; btn.title = 'העתקה'; btn.textContent = '⧉';
+    btn.onclick = async () => {
       const text = (msg.querySelector('[data-testid="stChatMessageContent"]') || msg).innerText.replace(/⁦|⁩/g, '').trim();
       try { await navigator.clipboard.writeText(text); } catch (e) {
         const t = doc.createElement('textarea'); t.value = text; doc.body.appendChild(t); t.select(); doc.execCommand('copy'); t.remove();
@@ -777,11 +784,17 @@ def _rate(value) -> str:
     return f"{value:g}%"
 
 
+def _group_budget(group: str) -> float:
+    from eligibility import group_budget
+    return group_budget(group)
+
+
 def state_rows(state) -> list[tuple[str, str | None]]:
     """שורות כרטיס "הנתונים שנקלטו עד כה": (כותרת, ערך או None אם טרם הוזן). לפי סדר השיחה."""
     emp, cur, tgt = state.employee, state.current, state.target
     rows = [
         ("קבוצת זכאות", emp.eligibility_group),
+        *([("תקציב הקבוצה", _money(_group_budget(emp.eligibility_group)))] if emp.eligibility_group else []),
         ("שכר בסיס", None if emp.base_salary is None else _money(emp.base_salary)),
         ("עמלות", None if emp.commissions is None else _money(emp.commissions)),
         ("בונוס", None if emp.bonus is None else _money(emp.bonus)),
@@ -790,18 +803,23 @@ def state_rows(state) -> list[tuple[str, str | None]]:
         ("נקודות זיכוי", None if emp.credit_points is None else f"{emp.credit_points:g}"),
     ]
     # עיסוק וילדים נדרשים רק בחלק מהמקרים (ויתור / מסלול ברוכת ילדים) - מוצגים רק אם נמסרו
-    if emp.occupation:
+    if emp.occupation and (emp.group_source == "occupation" or "waiver" in (cur.kind, tgt.kind)):
         rows.append(("עיסוק", emp.occupation))
     if emp.children_under_23 is not None:
         rows.append(("ילדים עד גיל 23", str(emp.children_under_23)))
 
+    # עשר השורות הראשונות (שבעה נתוני שכר, רכב נוכחי, השתתפות בו, חלופה) תמיד מוצגות, כדי שיתאימו למונה
     if cur.kind is None:
         rows.append(("רכב נוכחי", None))
+        rows.append(("השתתפות ברכב הנוכחי", None))
     elif cur.kind == "car":
         rows.append(("רכב נוכחי", cur.label))
         rows.append(("השתתפות ברכב הנוכחי", None if cur.participation is None else _money(cur.participation)))
+        if cur.usage_value:
+            rows.append(("שווי שימוש חודשי", _money(cur.usage_value)))
     else:
         rows.append(("רכב נוכחי", cur.label))
+        rows.append(("השתתפות ברכב הנוכחי", "לא רלוונטי"))
 
     if tgt.kind is None:
         rows.append(("חלופה מבוקשת", None))
@@ -810,7 +828,7 @@ def state_rows(state) -> list[tuple[str, str | None]]:
         if tgt.participation is None:
             rows.append(("השתתפות ברכב החדש", None))
         else:
-            suffix = " (זמנית)" if tgt.participation_status == "provisional" else ""
+            suffix = " (ממתין לאישור)" if tgt.participation_status == "provisional" else ""
             rows.append(("השתתפות ברכב החדש", _money(tgt.participation) + suffix))
     else:
         rows.append(("חלופה מבוקשת", tgt.label))
@@ -818,8 +836,10 @@ def state_rows(state) -> list[tuple[str, str | None]]:
 
 
 def state_progress(state) -> tuple[int, int]:
-    """(כמה מהנתונים הנדרשים לחישוב כבר נקלטו, כמה נדרשים בסך הכול).
-    הסכום קבוע (שבעה נתוני שכר + רכב נוכחי + השתתפות בו + חלופה + השתתפות בה), כדי שהיחס לא "יזוז" תוך כדי השיחה.
+    """(כמה מהנתונים שהעובד מוסר כבר נקלטו, כמה הוא מוסר בסך הכול).
+    הסכום קבוע (שבעה נתוני שכר + רכב נוכחי + השתתפות בו + חלופה), כדי שהיחס לא "יזוז" תוך כדי השיחה.
+    ההשתתפות ברכב החדש לא נספרת: היא מתמלאת אוטומטית מהקטלוג. שורות שנגזרות מנתונים אחרים
+    (תקציב הקבוצה, שווי שימוש) מוצגות בכרטיס אבל לא נספרות כאן.
     השתתפות שאינה רלוונטית (ויתור / ללא רכב) נספרת כהושלמה."""
     from state import REQUIRED_EMPLOYEE_FIELDS
     emp, cur, tgt = state.employee, state.current, state.target
@@ -827,7 +847,6 @@ def state_progress(state) -> tuple[int, int]:
     slots.append(cur.kind is not None)
     slots.append(cur.kind in ("waiver", "none") or (cur.kind == "car" and cur.participation is not None))
     slots.append(tgt.kind is not None)
-    slots.append(tgt.kind == "waiver" or (tgt.kind == "car" and tgt.participation is not None))
     return sum(slots), len(slots)
 
 
@@ -845,7 +864,10 @@ def state_sources(state) -> dict[str, str]:
                          ("פנסיה (עובד)", "pension_rate"), ("קרן השתלמות (עובד)", "study_fund_rate"),
                          ("נקודות זיכוי", "credit_points"), ("עיסוק", "occupation"), ("ילדים עד גיל 23", "children_under_23")):
         out[label] = SOURCE_TEXT.get(src.get(field, "employee"), "מהעובד")
+    if emp.eligibility_group:
+        out["תקציב הקבוצה"] = "מקובץ הכללים"
     if cur.kind == "car":
+        out["שווי שימוש חודשי"] = "מטבלת רשות המסים"
         out["רכב נוכחי"] = ("מקטלוג החברה" if cur.catalog_id else
                             "מהנציג" if "לפי הנציג" in (cur.label or "") else "מטבלת רשות המסים")
         out["השתתפות ברכב הנוכחי"] = SOURCE_TEXT.get(src.get("current_participation", "employee"), "מהעובד")
@@ -860,21 +882,44 @@ def state_sources(state) -> dict[str, str]:
     return out
 
 
+EXTRA_PROVIDED_ROWS = {"עיסוק", "ילדים עד גיל 23"}                      # מסר העובד (או התלוש), אבל לא נדרש תמיד
+DERIVED_ROWS = {"תקציב הקבוצה", "שווי שימוש חודשי", "השתתפות ברכב החדש"}   # נגזרים אוטומטית מהקטלוג והכללים
+
+
+def state_sections(state) -> list[tuple[str | None, list]]:
+    """שורות הכרטיס בשלוש קבוצות: עשרת הנתונים שהסרגל סופר (בלי כותרת), פרטים נוספים שהעובד מסר, ונתונים נגזרים.
+    הכרטיס, ההעתקה וההורדה משתמשים באותו סדר."""
+    rows = state_rows(state)
+    main = [r for r in rows if r[0] not in EXTRA_PROVIDED_ROWS | DERIVED_ROWS]
+    extra = [r for r in rows if r[0] in EXTRA_PROVIDED_ROWS]
+    derived = [r for r in rows if r[0] in DERIVED_ROWS]
+    sections = [(None, main)]
+    if extra:
+        sections.append(("פרטים נוספים שמסרת", extra))
+    if derived:
+        sections.append(("נגזר אוטומטית מהקטלוג והכללים", derived))
+    return sections
+
+
 def state_card_html(state) -> str:
     """כרטיס "הנתונים שנקלטו עד כה": שדות ריקים ("טרם הוזן") שמתמלאים ככל שהשיחה מתקדמת, ולכל נתון - מקורו."""
     rows = []
     sources = state_sources(state)
-    for label, value in state_rows(state):
-        if value is None:
-            rows.append(f"<div class='state-row empty'><span class='k'>{html.escape(label)}</span>"
-                        "<span class='v'>טרם הוזן</span></div>")
-        else:
-            source = f"<small class='src'>{html.escape(sources[label])}</small>" if label in sources else ""
-            rows.append(f"<div class='state-row filled'><span class='k'>{html.escape(label)}</span>"
-                        f"<span class='v'>{html.escape(str(value))}{source}</span></div>")
+    for heading, section_rows in state_sections(state):
+        if heading:
+            rows.append(f"<div class='state-hint' style='margin:.6rem 0 .2rem'>{html.escape(heading)}</div>")
+        for label, value in section_rows:
+            if value is None:
+                rows.append(f"<div class='state-row empty'><span class='k'>{html.escape(label)}</span>"
+                            "<span class='v'>טרם הוזן</span></div>")
+            else:
+                text = ("📄 " if sources.get(label) == "מהתלוש" else "") + sources.get(label, "")
+                source = f"<small class='src'>{html.escape(text)}</small>" if text else ""
+                rows.append(f"<div class='state-row filled'><span class='k'>{html.escape(label)}</span>"
+                            f"<span class='v'>{html.escape(str(value))}{source}</span></div>")
     note = ""
     if state.waiting_for_representative:
-        note = "<div class='state-hint'>⏳ ממתין לתשובת נציג התחבורה</div>"
+        note += "<div class='state-hint'>⏳ ממתין לתשובת נציג התחבורה</div>"
     return f"<div class='state-card'><div class='state-title'>הנתונים שנקלטו עד כה</div>{''.join(rows)}{note}</div>"
 
 
@@ -908,7 +953,7 @@ def rep_hero(open_count: int, answered_count: int) -> str:
 def render_state_card(state) -> None:
     """מצייר את הכרטיס (וסרגל התקדמות) במקום שבו הפונקציה נקראת - בפועל בפאנל הצד."""
     done, total = state_progress(state)
-    st.progress(done / total, text=f"נקלטו {done} מתוך {total} נתונים נדרשים לחישוב")
+    st.progress(done / total, text=f"נקלטו {done} מתוך {total} נתונים שאת/ה מוסר/ת")
     st.markdown(state_card_html(state), unsafe_allow_html=True)
 
 
@@ -1350,9 +1395,12 @@ def state_text(state) -> str:
     """הנתונים שנקלטו כטקסט להעתקה: שורה לכל נתון, ומקורו בסוגריים."""
     sources = state_sources(state)
     lines = ["הנתונים שנקלטו עד כה"]
-    for label, value in state_rows(state):
-        source = f" ({sources[label]})" if value is not None and label in sources else ""
-        lines.append(f"{label}: {'טרם הוזן' if value is None else value}{source}")
+    for heading, section_rows in state_sections(state):
+        if heading:
+            lines += ["", heading]
+        for label, value in section_rows:
+            source = f" ({sources[label]})" if value is not None and label in sources else ""
+            lines.append(f"{label}: {'טרם הוזן' if value is None else value}{source}")
     return "\n".join(lines)
 
 
@@ -1360,7 +1408,8 @@ def state_csv(state) -> bytes:
     sources = state_sources(state)
     return _csv_bytes([["נתון", "ערך", "מקור"]] + [[label, "טרם הוזן" if value is None else str(value),
                                                     sources.get(label, "") if value is not None else ""]
-                                                   for label, value in state_rows(state)])
+                                                   for _, section_rows in state_sections(state)
+                                                   for label, value in section_rows])
 
 
 def calc_rows(result: dict) -> list[list[str]]:
@@ -1436,6 +1485,47 @@ def render_comparison(result: dict, stale: bool = False) -> None:
     show_markdown(result["explanation"].replace("\n", "  \n"))
     st.caption("ההערכה לפי כללי המדיניות ולוחות המס שבקובץ ההגדרות, ואינה תחליף לתלוש השכר.")
     render_copy_download(comparison_text(result), comparison_csv(result), "comparison", "העתקת ההשוואה", "השוואת-נטו.csv")
+
+
+def ranking_table_html(ranking: dict) -> str:
+    """טבלת כל החלופות שהעובד זכאי להן, מהמשתלמת ביותר (לפי נטו חודשי) ועד הפחות משתלמת.
+    ארבע עמודות צרות; שווי השימוש וההשתתפות מופיעים מתחת לשם החלופה, כדי שהטקסט לא יישבר בעמודה צרה."""
+    rows = ["<tr><th>#</th><th>חלופה</th><th>נטו</th><th>הפרש</th></tr>"]
+    for place, option in enumerate(ranking["options"], 1):
+        deduction = option["participation"] + option["family_employee_share"]
+        detail = (f"שווי שימוש {_money(option['usage_value'])} · השתתפות {_money(deduction)}"
+                  if option["usage_value"] or deduction else "")
+        rows.append(f"<tr><td class='num'>{place}</td>"
+                    f"<td class='text'>{html.escape(option['label'])}"
+                    + (f"<span class='sub'>{html.escape(detail)}</span>" if detail else "") + "</td>"
+                    f"<td class='num'>{_money(option['net_alternative'])}</td>"
+                    f"<td class='num'>{option['diff']:+,.0f} ₪</td></tr>")
+    return ("<table class='rank-table'><colgroup><col class='r-place'><col class='r-label'><col class='r-num'>"
+            "<col class='r-num'></colgroup>" + "".join(rows) + "</table>")
+
+
+def ranking_text(ranking: dict) -> str:
+    lines = [f"דירוג חלופות (נטו היום {_money(ranking['net_today'])})"]
+    for place, option in enumerate(ranking["options"], 1):
+        lines.append(f"{place}. {option['label']}: נטו {_money(option['net_alternative'])}, "
+                     f"הפרש {option['diff']:+,.0f} ₪")
+    return "\n".join(lines + ranking["notes"])
+
+
+def ranking_csv(ranking: dict) -> bytes:
+    return _csv_bytes([["#", "חלופה", "שווי שימוש", "השתתפות", "נטו", "הפרש מול היום"]] + [
+        [str(place), option["label"], _money(option["usage_value"]),
+         _money(option["participation"] + option["family_employee_share"]), _money(option["net_alternative"]),
+         f"{option['diff']:+,.0f} ₪"] for place, option in enumerate(ranking["options"], 1)])
+
+
+def render_ranking(ranking: dict) -> None:
+    """תוכן "הצג דירוג חלופות": כל החלופות לפי נטו, עם הערות והעתקה והורדה."""
+    st.markdown(f"נטו היום: **{_money(ranking['net_today'])}**")
+    st.markdown(ranking_table_html(ranking), unsafe_allow_html=True)
+    for note in ranking["notes"]:
+        st.caption(note)
+    render_copy_download(ranking_text(ranking), ranking_csv(ranking), "ranking", "העתקת הדירוג", "דירוג-חלופות.csv")
 
 
 def render_calc_breakdown(result: dict) -> None:

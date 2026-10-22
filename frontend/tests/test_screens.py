@@ -121,7 +121,7 @@ def test_progress_total_never_changes_during_the_conversation():
     assert db.load_state(SID).current.kind == "waiver"
     verify_budget_and_eligibility(SID, "CAR-10")
     totals.add(state_progress(db.load_state(SID))[1])
-    assert totals == {11}
+    assert totals == {10}
     done = state_progress(db.load_state(SID))[0]
     update_employee_data(SID, new_participation=300)
     assert state_progress(db.load_state(SID))[0] >= done                   # ההתקדמות רק עולה (לא יורדת)
@@ -309,9 +309,9 @@ def test_state_card_shows_current_and_target_car():
 
 def test_state_progress_counts_required_fields():
     from ui import state_progress
-    assert state_progress(db.load_state(SID)) == (0, 11)
+    assert state_progress(db.load_state(SID)) == (0, 10)
     update_employee_data(SID, eligibility_group="ג", base_salary=14200)
-    assert state_progress(db.load_state(SID)) == (2, 11)
+    assert state_progress(db.load_state(SID)) == (2, 10)
     fill_to_comparison()
     done, total = state_progress(db.load_state(SID))
     assert done == total
@@ -910,3 +910,65 @@ def test_collect_stats_counts_sessions_and_questions():
     assert (stats["questions"], stats["open"], stats["answered"], stats["avg_answer_hours"]) == (2, 1, 1, 2.0)
     assert stats["by_rep"] == {"moshe": 1} and stats["users_by_role"]["rep"] == 1
     assert sum(stats["per_day"].values()) == 2 and len(stats["per_day"]) == 14
+
+
+def test_ranking_table_shows_every_ranked_alternative():
+    from agent_tools import best_alternatives
+    from ui import ranking_table_html, ranking_csv
+    update_employee_data(SID, eligibility_group="ג", base_salary=18500, commissions=0, bonus=0, pension_rate=6,
+                         study_fund_rate=2.5, credit_points=2.75)
+    find_current_car(SID, "corolla cross", 2025)
+    set_current_situation(SID, "car", candidate_number=1, participation=300)
+    assert best_alternatives(SID)["ok"]
+    ranking = db.load_state(SID).last_ranking
+    assert ranking and len(ranking["options"]) > 3                         # הטבלה מכילה את כל החלופות, לא רק שלוש
+    table = ranking_table_html(ranking)
+    assert table.count("<tr>") == len(ranking["options"]) + 1              # שורת כותרת + שורה לכל חלופה
+    assert len(ranking_csv(ranking).decode("utf-8-sig").splitlines()) == len(ranking["options"]) + 1
+    update_employee_data(SID, base_salary=19000)                           # שינוי נתונים: הדירוג כבר לא תקף
+    assert db.load_state(SID).last_ranking is None
+
+
+def test_ranking_panel_appears_in_the_side_panel_after_a_ranking():
+    from agent_tools import best_alternatives
+    update_employee_data(SID, eligibility_group="ג", base_salary=18500, commissions=0, bonus=0, pension_rate=6,
+                         study_fund_rate=2.5, credit_points=2.75)
+    find_current_car(SID, "corolla cross", 2025)
+    set_current_situation(SID, "car", candidate_number=1, participation=300)
+    assert best_alternatives(SID)["ok"]
+    at = employee_app()
+    assert any(e.label == "הצג דירוג חלופות" for e in at.expander)
+    assert any("class='rank-table'" in m.value and "הפרש" in m.value for m in at.markdown)
+
+
+def test_ranking_panel_appears_next_to_an_existing_comparison():
+    from agent_tools import best_alternatives
+    fill_to_comparison()
+    assert best_alternatives(SID)["ok"]
+    state = db.load_state(SID)
+    assert state.last_result and state.last_ranking                       # גם השוואה וגם דירוג נשמרו יחד
+    at = employee_app()
+    labels = [e.label for e in at.expander]
+    assert "הצג השוואה" in labels and "הצג דירוג חלופות" in labels
+
+
+def test_reset_offer_buttons_are_in_the_last_bot_bubble_without_a_close_button():
+    from agent_tools import offer_reset
+    update_employee_data(SID, eligibility_group="ג", base_salary=18500)
+    db.save_messages(SID, [{"role": "user", "content": "אני מנהל רכש"}, {"role": "assistant", "content": "אפשר לאפס"}])
+    offer_reset(SID)
+    at = employee_app()
+    keys = {b.key for b in at.button}
+    assert {"reset_confirm", "reset_new_chat"} <= keys and "reset_close" not in keys
+
+
+def test_reset_confirm_clears_the_data_and_closes_the_banner():
+    from agent_tools import offer_reset
+    update_employee_data(SID, eligibility_group="ג", base_salary=18500)
+    db.save_messages(SID, [{"role": "user", "content": "אני מנהל רכש"}, {"role": "assistant", "content": "אפשר לאפס"}])
+    offer_reset(SID)
+    at = employee_app()
+    at.button(key="reset_confirm").click().run()
+    state = db.load_state(SID)
+    assert state.employee.base_salary is None and not state.reset_offer
+    assert "reset_confirm" not in {b.key for b in at.button}

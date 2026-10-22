@@ -7,14 +7,14 @@ import streamlit as st
 
 import db
 import turns
-from actions import pick_message, picker_state, recalculate, set_picker
+from actions import pick_message, picker_state, recalculate, reset_data, set_picker
 from agent import STATUS_ANALYZING, chat, check_representative_updates, friendly_error, pending_user_message, start_session
 from agent_tools import REP_FIELDS
 from data_store import find_occupation
 from payslip import (ALLOWED_TYPES, FIELD_LABELS, OCCUPATION_LABEL, PayslipError, apply_payslip, check_file,
                      extract_payslip, summary_text)
-from ui import (CLOSE_PICKER, avatar_for, get_session_id, render_calc_breakdown, render_car_picker, render_comparison,
-                render_copy_download, render_history_sidebar, render_rail_header, render_state_card, require_consent,
+from ui import (CLOSE_PICKER, avatar_for, get_session_id, new_session, render_calc_breakdown, render_car_picker, render_comparison,
+                render_copy_download, render_history_sidebar, render_rail_header, render_ranking, render_state_card, require_consent,
                 require_role, show_markdown, state_csv, state_text, typing_status_html)
 
 require_role("employee")                # רק עובדים (או התחברות כבויה בפיתוח מקומי)
@@ -238,7 +238,7 @@ with chat_col:
 
 # תיבת הקלט מחוץ לעמודות: Streamlit מצמיד אותה תמיד לתחתית המסך. חלון השיחה מתאים את גובהו למסך (CSS),
 # ולכן הדף לא גולל בכל תור
-submitted = st.chat_input("כתוב/י כאן... (+ לצירוף תלוש שכר)", accept_file=True, file_type=sorted(ALLOWED_TYPES),
+submitted = st.chat_input("כתוב/י כאן...", accept_file=True, file_type=sorted(ALLOWED_TYPES),
                           max_chars=MAX_MESSAGE_CHARS)
 prompt = submitted.text if submitted else None
 upload = submitted.files[0] if submitted and submitted.files else None
@@ -247,9 +247,15 @@ text = (prompt or picked_text or st.session_state.pop("payslip_text", None)     
         or (None if live_turn else st.session_state.pop("queued_text", None)))
 messages = start_session(sid)
 with chat_box:
+    offer_reset_buttons = db.load_state(sid).reset_offer and messages[-1]["role"] == "assistant"
     for m in (m for m in messages if not m.get("hidden")):          # הודעות מערכת נסתרות לא מוצגות
         with st.chat_message(m["role"], avatar=avatar_for(m["role"])):
             show_markdown(m["content"])
+            if offer_reset_buttons and m is messages[-1]:           # הצעת איפוס: הכפתורים באותה בועה של התשובה האחרונה
+                reset_col, new_col, _ = st.columns([2, 2, 3])
+                reset_col.button("אישור איפוס", type="primary", key="reset_confirm", use_container_width=True,
+                                 on_click=reset_data, args=(sid,))
+                new_col.button("שיחה חדשה", key="reset_new_chat", use_container_width=True, on_click=new_session)
     if live_turn:
         if text:                                # נשלחה הודעה בזמן שהבוט עוד חושב: ממתינה לסיום התור
             st.session_state["queued_text"] = " ".join(t for t in (st.session_state.get("queued_text"), text) if t)
@@ -308,3 +314,8 @@ if show_comparison:
                 st.rerun()
         with st.expander("הצג איך חושב", expanded=False):
             render_calc_breakdown(state.last_result)
+
+if state.last_ranking and show_data:
+    with result_col:
+        with st.expander("הצג דירוג חלופות", expanded=not show_comparison):
+            render_ranking(state.last_ranking)
