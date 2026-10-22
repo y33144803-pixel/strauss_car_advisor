@@ -33,10 +33,11 @@ def when(value: str) -> str:
 
 user = require_role("admin")
 page_header("מסך ניהול", "כל השיחות, הנציגים והמשתמשים במקום אחד", "🛠️")
-st.markdown("<style>[class*='st-key-sessrow_new_'] { background: #F4E9FB; border-radius: 12px; padding: 6px 12px;"
-            " border-inline-start: 5px solid var(--primary); box-shadow: 0 2px 8px rgba(124,58,168,.10); }"
-            "[class*='st-key-sessrow_seen_'] { background: #fff; border: 1px solid var(--line); border-radius: 12px;"
-            " padding: 6px 12px; }</style>", unsafe_allow_html=True)
+# שורה שטרם נצפתה: לבנה ובולטת, עם פס ורוד ומודגשת; שורה שנצפתה: שקופה למחצה ושקטה (ההבדל ברור גם על הרקע הכהה)
+st.markdown("<style>[class*='st-key-sessrow_new_'] { background: #fff; border-radius: 12px; padding: 6px 12px; font-weight: 700;"
+            " border-inline-start: 7px solid #C2378C; box-shadow: 0 6px 18px rgba(0,0,0,.25); }"
+            "[class*='st-key-sessrow_seen_'] { background: rgba(255,255,255,.6); border: 1px solid rgba(255,255,255,.35);"
+            " border-radius: 12px; padding: 6px 12px; }</style>", unsafe_allow_html=True)
 
 tab_sessions, tab_users, tab_stats = st.tabs(["שיחות", "משתמשים", "סטטיסטיקות"], key="admin_tab", on_change="rerun")   # הלשונית נשמרת אחרי פעולה
 

@@ -77,8 +77,9 @@ def strauss_logo_html(folder: str = IMAGES_DIR) -> str:
 
 @functools.lru_cache(maxsize=4)
 def bot_icon_html(folder: str = IMAGES_DIR) -> str:
-    """אייקון הלוגו: הרובוט מתמונת הלוגו (images/carbot-icon.png, נוצר ע"י scripts/make_logo_icon.py). אין - הרובוט המצויר."""
-    return _embedded_image(folder, "carbot-icon", "cb-icon cb-icon-img", "CarBot") or BOT_ICON_SVG
+    """אייקון הלוגו: הרובוט מתמונת הלוגו (images/carbot-icon-cutout.png - בלי הרקע הלבן ובלי שטח ריק סביב; אם אין - images/carbot-icon.png). אין - הרובוט המצויר."""
+    return (_embedded_image(folder, "carbot-icon-cutout", "cb-icon cb-icon-img", "CarBot")
+            or _embedded_image(folder, "carbot-icon", "cb-icon cb-icon-img", "CarBot") or BOT_ICON_SVG)
 
 
 # אייקון הרובוט של CarBot (SVG פנימי, בלי קובץ): פנים מחייכות על רקע גרדיאנט
@@ -97,8 +98,9 @@ BOT_ICON_SVG = (
 def _find_login_image() -> str | None:
     """תמונת מסך הכניסה: images/login-image.* ; אם אין - תמונת הבוט."""
     folder = os.path.join(os.path.dirname(BACKEND_DIR), "images")
-    for name, extension in (("login-image-cutout", "png"), ("login-image", "jpg"), ("login-image", "png"),
-                            ("login-image", "jpeg"), ("login-image", "webp")):      # הראשון: אותה תמונה בלי הרקע הלבן
+    # login-cutout.png: התמונה החדשה (login.png, הנציג ברגליים שלמות) בלי רקע, והבוט מקורב לנציג; אחריה הישנות
+    for name, extension in (("login-cutout", "png"), ("login-image-cutout", "png"), ("login-image", "jpg"),
+                            ("login-image", "png"), ("login-image", "jpeg"), ("login-image", "webp")):
         path = os.path.join(folder, f"{name}.{extension}")
         if os.path.exists(path):
             return path
@@ -190,9 +192,9 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-
 .carbot-logo { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 2;
                display: flex; align-items: center; gap: 14px; direction: ltr; white-space: nowrap; line-height: 1.05; }
 .carbot-logo .cb-icon { width: 46px; height: 46px; flex: none; filter: drop-shadow(0 3px 5px rgba(124,58,168,.35)); }
-.carbot-logo .cb-icon-img { width: auto; height: 50px; object-fit: contain; filter: none; margin: 0; border: 0 !important;
+.carbot-logo .cb-icon-img { width: auto; height: 76px; max-width: 150px; object-fit: contain; filter: none; margin: 0; border: 0 !important;
                             box-shadow: none !important; border-radius: 0 !important; background: transparent; }
-.carbot-logo .cb-strauss { height: 46px; width: auto; max-width: 120px; object-fit: contain; mix-blend-mode: multiply; border: 0 !important; box-shadow: none !important;
+.carbot-logo .cb-strauss { height: 68px; width: auto; max-width: 150px; object-fit: contain; mix-blend-mode: multiply; border: 0 !important; box-shadow: none !important;
                            border-radius: 0 !important; }
 .carbot-logo .cb-sep { width: 2px; height: 36px; border-radius: 2px; background: linear-gradient(var(--primary), var(--accent)); opacity: .45; }
 .carbot-logo .cb-text { text-align: left; }
@@ -302,18 +304,25 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 [data-testid="stBottomBlockContainer"] [data-testid="stChatInput"] { width: calc((100% - 2rem) * 0.6); margin-right: 0; margin-left: auto; }
 
 /* מסך הכניסה: כרטיס טופס קטן, ותמונה גדולה בתוך עיגול (בצד שמאל) */
-.st-key-logincard { border: 3px solid transparent; border-radius: 24px; padding: 22px 24px;
-                    background: linear-gradient(#fff, #fff) padding-box, linear-gradient(135deg, #A82B7C, #4F1F85) border-box;
-                    box-shadow: 0 20px 50px rgba(60,20,100,.2); max-width: 360px; margin-inline: auto; }
-.st-key-logincard h3 { margin-top: 0; color: #241046; font-weight: 800; }
+.st-key-logincard { border: 1px solid rgba(255,255,255,.16); border-radius: 24px; padding: 26px 28px;
+                    background: rgba(40,22,80,.55); backdrop-filter: blur(8px);
+                    box-shadow: 0 22px 46px rgba(0,0,0,.35); width: 100%; max-width: 500px; aspect-ratio: 1; box-sizing: border-box;
+                    padding: 22px 30px; display: flex; flex-direction: column; justify-content: center; gap: 8px; margin-inline: auto; }
+.st-key-logincard h3 { margin-top: 0; color: #FFFFFF; font-weight: 800; }
+.st-key-logincard [data-testid="stCaptionContainer"], .st-key-logincard [data-testid="stCaptionContainer"] p { color: #D8CCEB; }
+.st-key-logincard [data-testid="stWidgetLabel"] p, .st-key-logincard label { color: #E6DDF5 !important; font-weight: 700; }
+.st-key-logincard [data-baseweb="input"] { background: #2E1A5E !important; border: 1px solid rgba(255,255,255,.2) !important; border-radius: 14px; overflow: hidden; }
+.st-key-logincard [data-baseweb="base-input"] { background: transparent !important; border: 0 !important; border-radius: 0; box-shadow: none !important; }
+.st-key-logincard input { background: transparent !important; color: #FFFFFF !important; caret-color: #FFFFFF; }
+.st-key-logincard [data-baseweb="input"] button, .st-key-logincard [data-baseweb="input"] svg { color: #E6DDF5 !important; fill: #E6DDF5 !important; }
 .st-key-logincard { position: relative; z-index: 3; }      /* הכרטיס מעל העיגול */
-.st-key-logincard [data-testid="stFormSubmitButton"] button { background: linear-gradient(135deg, #A82B7C, #4F1F85); border: 0;
-                    font-weight: 800; border-radius: 14px; min-height: 2.9rem; box-shadow: 0 10px 22px rgba(79,31,133,.4); }
+.st-key-logincard [data-testid="stFormSubmitButton"] button { background: linear-gradient(135deg, #C2378C, #6D2FA0); border: 0;
+                    font-weight: 800; border-radius: 14px; min-height: 2.9rem; box-shadow: 0 10px 22px rgba(0,0,0,.3); }
 .st-key-logincard [data-testid="stFormSubmitButton"] button, .st-key-logincard [data-testid="stFormSubmitButton"] button * { color: #fff; }
 .st-key-loginimage { position: relative; width: 100%; max-width: calc(100vh - 215px); aspect-ratio: 1; margin: 0 auto; line-height: 0; }
 .st-key-loginimage::before { content: ""; position: absolute; inset: 0; border-radius: 50%;
-                             background: radial-gradient(circle at 35% 30%, #fff 0%, #DDC8F0 55%, #EDC3DC 100%);
-                             box-shadow: 0 24px 60px rgba(60,20,100,.26); }
+                             background: radial-gradient(circle at 30% 25%, #FFFFFF 0%, #E6D6F7 38%, #C9A9E8 70%, #E7B3D6 100%);
+                             box-shadow: 0 24px 60px rgba(0,0,0,.3); }
 .st-key-loginimage::after { content: "נטו היום מול נטו בחלופה"; position: absolute; top: 7%; right: 0; background: #fff; border-radius: 16px;
                             padding: 9px 15px; box-shadow: 0 10px 26px rgba(60,20,100,.22); font-weight: 700; font-size: .9rem;
                             color: #3F1A6B; line-height: 1.3; direction: rtl; }
@@ -323,6 +332,11 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 .st-key-loginimage img { position: absolute; inset: 0; width: 100% !important; height: 100% !important; object-fit: contain;
                          border-radius: 0; }
 .st-key-logincard [data-testid="stForm"] { border: 0; background: transparent; padding: 0; }
+/* מסך הכניסה: רקע סגול כהה עם הילות (כמו כיוון ב); רק הרקע משתנה, שאר המסך נשאר כמו שהוא */
+[data-testid="stApp"]:has(.st-key-logincard), [data-testid="stApp"]:has(.st-key-logincard) [data-testid="stAppViewContainer"] {
+    background: radial-gradient(ellipse at 50% 0%, #4B2079 0%, transparent 55%),
+                radial-gradient(ellipse at 18% 80%, #9A3A96 0%, #7A2A88 30%, transparent 66%),
+                radial-gradient(ellipse at 100% 90%, #5B2A9A 0%, transparent 45%), #1A0E33; }
 
 /* סרגל הצד: רשימת שיחות (כפתור לכל שיחה, השיחה הפעילה בסגול) ושורת איקונים בתחתית */
 .st-key-chat-list button { justify-content: flex-start; text-align: right; }
@@ -337,14 +351,22 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 .st-key-chat-list button p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
 /* איקון העריכה (שינוי שם ומחיקה) בתוך כפתור השיחה, בקצה הימני שלו; התאריך היחסי בקצה השמאלי */
 [class*="st-key-chatrow_"] { position: relative; }
-[class*="st-key-chatrow_"] > [data-testid="stLayoutWrapper"]:has([data-testid="stPopover"]) {
-    position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: auto; z-index: 2; }
-[class*="st-key-chatrow_"] [data-testid="stPopover"] button { background: transparent; border: 0; box-shadow: none;
+[class*="st-key-chatrow_"] [class*="st-key-edit_"] {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: auto !important; z-index: 2; }
+[class*="st-key-chatrow_"] [class*="st-key-edit_"] button { background: transparent; border: 0; box-shadow: none;
     min-height: 0; padding: 2px 4px; color: #6b6b7b; }
-[class*="st-key-chatrow_"] [data-testid="stPopover"] button:hover { background: rgba(0,0,0,.08); }
-[class*="st-key-chatrow_a_"] [data-testid="stPopover"] button, [class*="st-key-chatrow_a_"] [data-testid="stPopover"] button * { color: #fff; }
-[class*="st-key-chatrow_"] [data-testid="stPopover"] button div[aria-hidden="true"] { display: none; }
-.st-key-chat-list button p { padding-right: 34px; }
+[class*="st-key-chatrow_"] [class*="st-key-edit_"] button:hover { background: rgba(0,0,0,.08); }
+[class*="st-key-chatrow_a_"] [class*="st-key-edit_"] button, [class*="st-key-chatrow_a_"] [class*="st-key-edit_"] button * { color: #fff; }
+/* שינוי שם ומחיקה: חלון צף מתחת לשורה, מעל השורות שאחריה (לא דוחף את הרשימה). בלי top - נשאר במקום שבו היה בזרימה */
+/* הרשימה נגללת בעצמה (ולא כל כרטיס הסרגל), כדי שחלון העריכה יוכל לבלוט מהסרגל בלי להיחתך */
+.st-key-chat-list { max-height: calc(100vh - 6.8rem - 16px - 11.5rem); overflow-y: auto; overflow-x: hidden; }
+/* החלון עצמו: המיקום (top / right) נקבע ב-JS לפי השורה; בלי JS - בראש הסרגל */
+[class*="st-key-chatedit_"] { position: absolute !important; top: 4rem; right: 0; width: 320px !important; min-width: 320px !important; max-width: none !important; z-index: 1000;
+    background: #F4EEFA; border: 1px solid var(--line); border-radius: 16px; padding: 18px 16px 16px;
+    box-shadow: 0 14px 34px rgba(43,37,64,.28); }
+.st-key-panel_close_x { position: absolute !important; top: 8px; left: 8px; width: auto !important; z-index: 2; }
+.st-key-panel_close_x button { width: 30px; height: 30px; min-height: 0; padding: 0; border-radius: 50%; border: 0;
+    background: #fff; color: var(--primary); box-shadow: 0 2px 6px rgba(43,37,64,.15); }.st-key-chat-list button p { padding-right: 34px; }
 
 /* פאנל הצד: "הנתונים שנקלטו עד כה" */
 [data-testid="stSidebarContent"] { padding-top: 9.6rem; position: relative; }
@@ -440,8 +462,8 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 .page-head .ph-icon { width:48px; height:48px; border-radius:15px; flex:none; display:flex; align-items:center;
                       justify-content:center; font-size:1.55rem; color:#fff;
                       background:linear-gradient(135deg, var(--accent), var(--primary)); box-shadow:0 8px 18px rgba(124,58,168,.28); }
-.page-head .ph-title { font-size:1.65rem; font-weight:800; color:var(--ink); line-height:1.15; }
-.page-head .ph-sub { color:var(--muted); font-size:.95rem; margin-top:3px; }
+.page-head .ph-title { font-size:1.65rem; font-weight:800; color:#FFFFFF; line-height:1.15; }
+.page-head .ph-sub { color:#E6DDF5; font-size:.95rem; margin-top:3px; }
 [class*="st-key-card-"] { background:#fff; border:1px solid var(--line); border-radius:18px; padding:20px 22px;
                           box-shadow:0 6px 20px rgba(43,37,64,.06); margin-bottom:16px; }
 .card-title { display:flex; align-items:center; gap:8px; font-weight:800; font-size:1.08rem; color:var(--primary); margin:0 0 10px; }
@@ -472,7 +494,7 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 .st-key-consent-card { background:#fff; border-radius:18px !important; padding:24px 24px 18px !important;
                        box-shadow:0 10px 28px rgba(43,37,64,.08); border-top:5px solid var(--primary) !important; }
 /* ---- מראה כללי: רקע לבנדר, כרטיס שיחה, בועות, סרגל צד וכרטיס הצד הסגול ---- */
-[data-testid="stApp"], [data-testid="stAppViewContainer"] { background: linear-gradient(180deg, #EFE6F8 0%, #F7F3FB 340px, #F7F3FB 100%); }
+[data-testid="stApp"], [data-testid="stAppViewContainer"] { background: radial-gradient(ellipse at 50% 0%, #4B2079 0%, transparent 55%), radial-gradient(ellipse at 18% 80%, #9A3A96 0%, #7A2A88 30%, transparent 66%), radial-gradient(ellipse at 100% 90%, #5B2A9A 0%, transparent 45%), #1A0E33; }
 div.st-key-chatbox.st-key-chatbox, div.st-key-chatbox-btn.st-key-chatbox-btn, div.st-key-chatbox-picker.st-key-chatbox-picker {
     background: #fff; border-radius: 24px; box-shadow: 0 14px 40px rgba(77,29,117,.10); border: 1px solid rgba(109,47,160,.08);
     padding: 14px 16px; }
@@ -483,7 +505,8 @@ div.st-key-chatbox.st-key-chatbox, div.st-key-chatbox-btn.st-key-chatbox-btn, di
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"] {
     background: linear-gradient(135deg, #6D2FA0, #8A3FB8); border-radius: 6px 20px 20px 20px; box-shadow: 0 6px 16px rgba(109,47,160,.28); }
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"] * { color: #fff; }
-[data-testid="stChatMessage"] img[alt$="avatar"] { width: 3.4rem; height: 3.4rem; min-width: 3.4rem; border-radius: 50%; object-fit: cover; mix-blend-mode: multiply; }
+/* בלי mix-blend-mode: על הרקע הכהה (מסך הניהול, שבו השיחה לא בכרטיס לבן) המיזוג השחיר את תמונת הבוט */
+[data-testid="stChatMessage"] img[alt$="avatar"] { width: 3.4rem; height: 3.4rem; min-width: 3.4rem; border-radius: 50%; object-fit: cover; background: #fff; }
 [data-testid="stChatMessageAvatarAssistant"] { background: #F6F1FB !important; border-radius: 50% !important; overflow: hidden; width: 3.4rem; height: 3.4rem; min-width: 3.4rem; }
 [data-testid="stChatMessageAvatarUser"] { background: linear-gradient(135deg, #6D2FA0, #8A3FB8) !important; border-radius: 50% !important; }
 /* שורת העובד: התמונה בצד שמאל והבועה צמודה אליה (בלי רווח באמצע) */
@@ -496,7 +519,7 @@ div.st-key-chatbox.st-key-chatbox, div.st-key-chatbox-btn.st-key-chatbox-btn, di
 [data-testid="stSidebar"], [data-testid="stSidebar"] > div:first-child { background: transparent; box-shadow: none; border: 0; }
 [data-testid="stSidebarContent"] { background: #fff !important; margin: 6.8rem 10px 16px; height: calc(100vh - 6.8rem - 16px);
     border-radius: 24px; box-shadow: 0 14px 40px rgba(77,29,117,.12); border: 1px solid rgba(109,47,160,.08);
-    padding: 3.4rem 14px 14px !important; overflow-y: auto; }
+    padding: 3.4rem 14px 14px !important; overflow: visible; }
 #close-sidebar-btn { top: .9rem !important; left: 50% !important; transform: translateX(-50%); }
 /* תיבת הכתיבה: שדה מעוגל עם מסגרת סגולה, כפתור שליחה בגרדיאנט וכפתור הצירוף (+) בלבנדר */
 [data-testid="stChatInput"] { border: 1.5px solid rgba(109,47,160,.25); border-radius: 18px; background: #fff;
@@ -508,6 +531,10 @@ div.st-key-chatbox.st-key-chatbox, div.st-key-chatbox-btn.st-key-chatbox-btn, di
 .st-key-new_chat_button button { background: linear-gradient(135deg, #C2378C, #6D2FA0); border: 0; border-radius: 14px; font-weight: 800;
                                  min-height: 2.9rem; box-shadow: 0 8px 18px rgba(109,47,160,.3); }
 .st-key-new_chat_button button, .st-key-new_chat_button button * { color: #fff; }
+/* השכבה הפנימית של Streamlit (רקע לבנדר ופינות 8px) ציירה תיבה שנייה בתוך התיבה שלנו */
+[data-testid="stChatInput"] > div { background: transparent !important; border-color: transparent !important; border-radius: 18px; }
+[data-testid="stChatInput"] textarea, [data-testid="stChatInput"] [data-baseweb="textarea"], [data-testid="stChatInput"] [data-baseweb="base-input"] {
+    background: transparent !important; border-color: transparent !important; }
 .st-key-side-rail { background: linear-gradient(170deg, #3E1768 0%, #6D2FA0 60%, #A8338F 100%); border-radius: 24px; padding: 48px 22px 22px;
                     box-shadow: 0 22px 46px rgba(77,29,117,.36); }
 .st-key-side-rail h3, .st-key-side-rail h2 { color: #fff; }
@@ -570,6 +597,42 @@ div.st-key-chatbox.st-key-chatbox, div.st-key-chatbox-btn.st-key-chatbox-btn, di
 COPY_BUTTON_JS = """
 (() => {                         // עטיפה: אחרת ההרצה השנייה של הסקריפט מצהירה שוב על doc ומקבלת שגיאה
 const doc = window.parent.document;
+/* כרטיסי השאלות במסך הנציג: פס צבעוני בצד, כותרת בולטת וריווח נעים; שאלה פתוחה בוורוד, שנענתה בירוק */
+[class*="st-key-card-q-"], [class*="st-key-card-a-"] { border-radius: 22px; margin-bottom: 14px; overflow: hidden; transition: box-shadow .2s ease, transform .2s ease; }
+[class*="st-key-card-q-"] { border-inline-start: 6px solid #C2378C !important; }
+[class*="st-key-card-a-"] { border-inline-start: 6px solid #1E8E5A !important; }
+[class*="st-key-card-q-"]:hover, [class*="st-key-card-a-"]:hover { box-shadow: 0 18px 44px rgba(77,29,117,.16) !important; transform: translateY(-1px); }
+[class*="st-key-card-q-"] summary, [class*="st-key-card-a-"] summary { padding: 16px 20px; font-size: 1.05rem; font-weight: 800; color: #2B1450; }
+[class*="st-key-card-q-"] summary p, [class*="st-key-card-a-"] summary p { font-weight: 800; color: #2B1450; }
+[class*="st-key-card-q-"] [data-testid="stExpanderDetails"], [class*="st-key-card-a-"] [data-testid="stExpanderDetails"] { padding: 4px 22px 20px; }
+[class*="st-key-card-q-"] .q-head .q-title { font-size: 1.12rem; font-weight: 800; color: #2B1450; }
+[class*="st-key-card-a-"] .ans-row { background: transparent; padding: 0; }
+
+/* ---- רקע כהה לכל המסכים (כמו במסך הכניסה): הטקסט מחוץ לכרטיסים בהיר, ובתוך הכרטיסים הלבנים כהה ---- */
+[data-testid="stMain"] { color: #F3EEFA; }
+[data-testid="stMain"] [data-testid="stCaptionContainer"] { color: #E6DDF5; }
+[data-testid="stMain"] [data-testid="stWidgetLabel"] p { color: #F3EEFA !important; }
+[data-testid="stMain"] [data-testid="stMarkdownContainer"] { color: #F3EEFA; }
+[data-testid="stTabs"] [role="tab"] { color: #E6DDF5 !important; }
+[data-testid="stTabs"] [role="tab"][aria-selected="true"] { color: #FFFFFF !important; }
+[data-testid="stMetricLabel"], [data-testid="stMetricValue"] { color: #FFFFFF !important; }
+.empty-card { background: #FFFFFF; color: #6F6A80; }
+/* מסך ניהול: שורות הטבלה (בהירות) - טקסט כהה, וכפתור "צפייה" בשורה אחת */
+[class*="st-key-sessrow_"], [class*="st-key-sessrow_"] [data-testid="stMarkdownContainer"], [class*="st-key-sessrow_"] p { color: #231B38 !important; }
+[class*="st-key-sessrow_"] button { white-space: nowrap; padding-inline: .6rem; min-width: 4.2rem; }
+[class*="st-key-sessrow_"] button p { color: inherit !important; }
+/* כיתוב כפתור לוקח את צבע הכפתור עצמו (ולא את הצבע הבהיר של הטקסט שעל הרקע הכהה) */
+[data-testid="stMain"] button [data-testid="stMarkdownContainer"] { color: inherit; }
+/* כפתור רגיל על הרקע הכהה: כיתוב סגול כהה (הצבע הבהיר של הדף היה הופך אותו לבלתי נראה על הרקע הלבן) */
+[data-testid="stMain"] button[kind="secondary"] { color: #3F1A6B; }
+[data-testid="stMain"] button [data-testid="stMarkdownContainer"] { color: inherit !important; }
+:is([data-testid="stForm"], [data-testid="stChatMessageContent"], [data-testid="stExpander"], [class*="st-key-card-"], [data-testid="stChatInput"], .st-key-chatbox, .st-key-chatbox-btn, .st-key-chatbox-picker, .st-key-cmp-card, .state-card, .st-key-car_picker, .st-key-consent-card, [data-testid="stDataFrame"], .empty-card) { color: #231B38; }
+:is([data-testid="stForm"], [data-testid="stChatMessageContent"], [data-testid="stExpander"], [class*="st-key-card-"], .st-key-chatbox, .st-key-chatbox-btn, .st-key-chatbox-picker, .st-key-cmp-card, .state-card, .st-key-car_picker, .st-key-consent-card, .empty-card) [data-testid="stCaptionContainer"] { color: #6B6480; }
+:is([data-testid="stForm"], [data-testid="stChatMessageContent"], [data-testid="stExpander"], [class*="st-key-card-"], .st-key-chatbox, .st-key-chatbox-btn, .st-key-chatbox-picker, .st-key-cmp-card, .state-card, .st-key-car_picker, .st-key-consent-card, .empty-card) [data-testid="stWidgetLabel"] p { color: #3F1A6B !important; }
+:is([data-testid="stForm"], [data-testid="stChatMessageContent"], [data-testid="stExpander"], [class*="st-key-card-"], .st-key-chatbox, .st-key-chatbox-btn, .st-key-chatbox-picker, .st-key-cmp-card, .state-card, .st-key-car_picker, .st-key-consent-card, .empty-card) [data-testid="stMarkdownContainer"] { color: #231B38; }
+/* כרטיס הכניסה הכהה: התוויות והכיתוב בהירים (הכלל הכללי של טפסים מעליו צובע אותם בכהה) */
+.st-key-logincard [data-testid="stWidgetLabel"] p, .st-key-logincard label { color: #E6DDF5 !important; }
+.st-key-logincard [data-testid="stMarkdownContainer"] { color: #E6DDF5; }
 // חזרה לדף מה-Back-Forward Cache של הדפדפן: החיבור לשרת כבר סגור והדף נשאר מקפא/ריק - טוענים אותו מחדש
 if (!window.parent.__bfReload) {
   window.parent.__bfReload = true;
@@ -611,6 +674,28 @@ if (!doc.__copyButtons) {
     const btn = doc.createElement('button');
     btn.className = 'copy-msg'; btn.type = 'button'; btn.title = 'העתקה'; btn.textContent = '⧉';
     btn.onclick = async () => {
+// חלון שינוי שם / מחיקה בסרגל: ממוקם מתחת לשורה שלו, וקצהו הימני מעט בתוך השורה - כך שהוא בולט שמאלה מהסרגל
+if (!window.parent.__chatEditPlacer) {
+  window.parent.__chatEditPlacer = true;
+  const place = () => {
+    const panel = doc.querySelector('[class*="st-key-chatedit_"]');
+    if (!panel || !panel.offsetParent) return;
+    const cls = [...panel.classList].find(c => c.startsWith('st-key-chatedit_'));
+    const sid = cls.slice('st-key-chatedit_'.length);
+    const row = [...doc.querySelectorAll('[class*="st-key-chatrow_"]')]
+      .find(r => [...r.classList].some(c => c.startsWith('st-key-chatrow_') && c.endsWith('_' + sid)));
+    if (!row) return;
+    const host = panel.offsetParent.getBoundingClientRect(), r = row.getBoundingClientRect();
+    let top = r.bottom - host.top + 6;
+    const room = window.parent.innerHeight - r.bottom - 12;
+    if (room < panel.offsetHeight) top = r.top - host.top - panel.offsetHeight - 6;    // אין מקום למטה - נפתח מעל השורה
+    panel.style.top = top + 'px';
+    panel.style.right = (host.right - r.right + 28) + 'px';
+  };
+  new MutationObserver(place).observe(doc.body, {childList: true, subtree: true});
+  doc.addEventListener('scroll', place, true);
+  window.parent.addEventListener('resize', place);
+}
       const text = (msg.querySelector('[data-testid="stChatMessageContent"]') || msg).innerText.replace(/⁦|⁩/g, '').trim();
       try { await navigator.clipboard.writeText(text); } catch (e) {
         const t = doc.createElement('textarea'); t.value = text; doc.body.appendChild(t); t.select(); doc.execCommand('copy'); t.remove();
@@ -971,7 +1056,7 @@ def render_login() -> None:
     import db
     st.markdown("<style>[data-testid='stSidebar'], [data-testid='stSidebarCollapsedControl'] { display: none; }"
                 ".block-container { padding-top: 6rem !important; padding-bottom: 0 !important; }</style>", unsafe_allow_html=True)
-    _, form_col, image_col, _ = st.columns([0.2, 0.8, 1.4, 0.2], gap="large", vertical_alignment="center")
+    _, form_col, image_col, _ = st.columns([0.1, 1.0, 1.4, 0.1], gap="large", vertical_alignment="center")
     with form_col:
         with st.container(key="logincard"):
             st.markdown("### ברוך הבא")
@@ -1046,15 +1131,31 @@ def render_history_sidebar(current_sid: str | None) -> None:
                     if st.button(f"{item['title']}\n\n{item['when']}", key=f"open_{session_id}", use_container_width=True,
                                  type="primary" if active else "secondary", help=item["preview"]):
                         _open_session(session_id)
-                    with st.popover("", icon=":material/edit:"):
-                        new_title = st.text_input("שם השיחה", value=item["title"], key=f"title_{session_id}")
-                        if st.button("שמירת שם", key=f"save_{session_id}", use_container_width=True):
-                            db.rename_session(session_id, owner, new_title)
-                            st.rerun()
-                        if st.button("מחיקת השיחה", key=f"delete_{session_id}", icon=":material/delete:",
-                                     use_container_width=True):
-                            st.session_state["confirm_delete"] = session_id
-                            st.rerun()
+                    # כפתור עפרון בלבד (ולא popover: ל-popover יש חץ קבוע, והחלון שלו יצא מחוץ למסך בסרגל שבקצה)
+                    st.button("", key=f"edit_{session_id}", icon=":material/edit:", help="שינוי שם או מחיקה",
+                              on_click=_toggle_chat_edit, args=(session_id,))
+        # שינוי שם ומחיקה: חלון צף. נבנה מחוץ לרשימה (שנגללת וחותכת), וממוקם ב-JS ליד השורה, בולט מעט מהסרגל
+        editing = next((item for item in sessions if item["session_id"] == st.session_state.get("edit_chat")), None)
+        if editing:
+            session_id = editing["session_id"]
+            with st.container(key=f"chatedit_{session_id}"):
+                st.button("", key="panel_close_x", icon=":material/close:", help="סגירה",
+                          on_click=_toggle_chat_edit, args=(session_id,))
+                new_title = st.text_input("שם השיחה", value=editing["title"], key=f"title_{session_id}")
+                if st.button("שמירת שם", key=f"save_{session_id}", use_container_width=True):
+                    db.rename_session(session_id, owner, new_title)
+                    st.session_state.pop("edit_chat", None)
+                    st.rerun()
+                if st.button("מחיקת השיחה", key=f"delete_{session_id}", icon=":material/delete:",
+                             use_container_width=True):
+                    st.session_state["confirm_delete"] = session_id
+                    st.session_state.pop("edit_chat", None)
+                    st.rerun()
+
+
+def _toggle_chat_edit(session_id: str) -> None:
+    """לחיצה על העפרון: פותחת (או סוגרת) את שינוי השם והמחיקה של השיחה הזו."""
+    st.session_state["edit_chat"] = None if st.session_state.get("edit_chat") == session_id else session_id
 
 
 def logout() -> None:

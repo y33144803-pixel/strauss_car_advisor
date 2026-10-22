@@ -603,12 +603,14 @@ def test_open_rename_and_delete_conversations_from_sidebar(auth_on):
     assert at.session_state["sid"] == "h1"
     assert any("מעבר לרכב חשמלי" in m.value for m in at.markdown)
 
+    at.sidebar.button(key="edit_h1").click().run()                    # העפרון פותח שינוי שם ומחיקה מתחת לשורה
     at.sidebar.text_input(key="title_h1").set_value("הרכב החשמלי")
     at.sidebar.button(key="save_h1").click().run()                    # שינוי שם
     assert db.list_user_sessions("dana")[0]["title"] == "הרכב החשמלי" or \
         "הרכב החשמלי" in [h["title"] for h in db.list_user_sessions("dana")]
     assert any(b.label.startswith("הרכב החשמלי\n\n") for b in at.sidebar.button)      # השם, ומתחתיו (בעיצוב: משמאל) התאריך היחסי
 
+    at.sidebar.button(key="edit_h1").click().run()                    # השמירה סגרה את העריכה - פותחים שוב
     at.sidebar.button(key="delete_h1").click().run()                  # מחיקה: קודם אישור
     assert db.session_exists("h1")
     assert any("למחוק את השיחה" in w.value for w in at.sidebar.warning)
@@ -621,6 +623,7 @@ def test_open_rename_and_delete_conversations_from_sidebar(auth_on):
 def test_cancel_keeps_the_conversation(auth_on):
     import db
     at = logged_in_dana()
+    at.sidebar.button(key="edit_h2").click().run()
     at.sidebar.button(key="delete_h2").click().run()
     at.sidebar.button(key="confirm_delete_no").click().run()
     assert db.session_exists("h2")
