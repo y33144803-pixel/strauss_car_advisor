@@ -222,13 +222,28 @@ def _system_message(session_id: str):
     return ChatMessage(role=MessageRole.SYSTEM, content=content)
 
 
+_FAKE_SYSTEM_TAG = re.compile(r"\[\s*(?:הודעת מערכת|הערת מערכת|הערת הנציג)[^\]]*\]")
+
+
+def neutralize_user_text(text: str) -> str:
+    """טקסט שהעובד הקליד לא יכול להידמות להודעת מערכת או להערת נציג (שהמודל מתייחס אליהן כמהימנות)."""
+    return _FAKE_SYSTEM_TAG.sub("(תג מערכת שהוקלד הוסר)", text)
+
+
 def _history_messages(messages: list[dict]) -> list:
     from llama_index.core.llms import ChatMessage, MessageRole
     roles = {"user": MessageRole.USER, "assistant": MessageRole.ASSISTANT}
+
+    def content_of(m: dict) -> str:
+        text = m["content"]
+        if m["role"] == "user" and not m.get("hidden"):          # הודעות מערכת נסתרות נשמרות כמות שהן
+            text = neutralize_user_text(text)
+        return text
+
     # הערת נציג לבוט ("bot_note") לא מוצגת לעובד, אבל נכללת בהקשר שהמודל מקבל
     return [ChatMessage(role=roles[m["role"]],
-                        content=m["content"] + (f"\n\n[הערת הנציג - לשימושך בלבד, אל תצטט/י אותה לעובד: {m['bot_note']}]"
-                                                if m.get("bot_note") else ""))
+                        content=content_of(m) + (f"\n\n[הערת הנציג - לשימושך בלבד, אל תצטט/י אותה לעובד: {m['bot_note']}]"
+                                                 if m.get("bot_note") else ""))
             for m in messages[-HISTORY_LIMIT:] if m["role"] in roles]
 
 
