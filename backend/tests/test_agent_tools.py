@@ -700,3 +700,40 @@ def test_data_sources_are_tracked_per_field():
     apply_payslip(SID, {"commissions": 1000.0})
     state = db.load_state(SID)
     assert state.sources["base_salary"] == "employee" and state.sources["commissions"] == "payslip"
+
+
+# ------------------------------------------------------------ הפרש משוער לפני שהושלמו כל הנתונים
+
+def _fill_until_pension():
+    """הכול חוץ מאחוזי פנסיה וקרן השתלמות."""
+    update_employee_data(SID, eligibility_group="ג", base_salary=14200, commissions=1000, bonus=0, credit_points=2.25)
+    find_current_car(SID, "corolla cross", 2025)
+    set_current_situation(SID, "car", candidate_number=1)
+    update_employee_data(SID, current_participation=300)
+    verify_budget_and_eligibility(SID, "CAR-10")
+
+
+def test_preview_difference_matches_final_diff_when_only_pension_fields_missing():
+    from agent_tools import preview_difference
+    _fill_until_pension()
+    preview = preview_difference(SID)
+    assert preview["ok"] and preview["data"]["status"] == "preview"
+    assert "net_today" not in preview["data"] and "net_alternative" not in preview["data"]    # נטו מוחלט לא מוצג
+    update_employee_data(SID, pension_rate=6, study_fund_rate=2.5)
+    final = calculate_net_salary(SID)["data"]
+    assert preview["data"]["diff"] == final["diff"]
+
+
+def test_preview_difference_refuses_when_income_or_choice_is_missing():
+    from agent_tools import preview_difference
+    update_employee_data(SID, eligibility_group="ג", base_salary=14200)          # חסרים עמלות/בונוס, רכב, חלופה
+    result = preview_difference(SID)
+    assert result["ok"] is False and result["data"] == {}
+
+
+def test_preview_difference_refuses_when_nothing_is_missing():
+    from agent_tools import preview_difference
+    fill_script_employee()
+    set_corolla_cross_today()
+    verify_budget_and_eligibility(SID, "CAR-10")
+    assert preview_difference(SID)["ok"] is False                                 # יש הכול: משתמשים ב-calculate_net_salary

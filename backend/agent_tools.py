@@ -5,6 +5,7 @@
 התיאור שהסוכן רואה לכל כלי נמצא בנפרד ב-tool_specs.json.
 """
 import difflib
+import itertools
 import re
 from typing import Optional
 
@@ -13,7 +14,7 @@ from calc_engine import MAX_CREDIT_POINTS, MAX_MONTHLY_AMOUNT, CarSituation, Sal
 from data_store import find_car, find_car_by_name, find_occupation, get_catalog, get_occupations, get_rules
 from eligibility import (is_family_car, check_car_choice, check_waiver, family_employee_share,
                          group_budget, lookup_catalog_usage_value)
-from state import ConversationState, TargetChoice
+from state import REQUIRED_EMPLOYEE_FIELDS, ConversationState, TargetChoice
 from usage_value_db import get_usage_value as db_get_usage_value
 from usage_value_db import search_by_name
 
@@ -741,6 +742,39 @@ def calculate_net_salary(session_id: str) -> dict:
     step = ("הצג לעובד את ההשוואה וההסבר, וציין שזו השוואת ביניים עד תשובת הנציג" if status == "provisional"
             else "הצג לעובד את ההשוואה וההסבר, ושאל אם ירצה לבדוק חלופה אחרת")
     return _result(True, summary, next_step=step)
+
+
+PREVIEW_BOUNDS = {"pension_rate": (0, 100), "study_fund_rate": (0, 100)}      # נקודות זיכוי לא כאן: הן יכולות לאפס את המס ולשנות את ההפרש
+
+
+def preview_difference(session_id: str) -> dict:
+    """הפרש משוער לפני שהושלמו כל הנתונים. מותר רק כשהנתונים החסרים הם אחוז פנסיה / קרן השתלמות,
+    וההפרש זהה (עד שקל) בכל הטווח החוקי שלהם - נבדק במנוע על הקצוות, בלי להניח ערך. נטו מוחלט לא מוצג."""
+    state = db.load_state(session_id)
+    unknown = [f for f in PREVIEW_BOUNDS if getattr(state.employee, f) is None]
+    if not unknown:
+        return _result(False, error="כל הנתונים קיימים", next_step="הפעל calculate_net_salary")
+    allowed = {REQUIRED_EMPLOYEE_FIELDS[f] for f in unknown}
+    others = [m for m in state.missing_required_fields() if m not in allowed]
+    if others or state.blocking_pending:
+        return _result(False, error="עדיין חסרים נתונים שמשפיעים על ההפרש", missing=others,
+                       next_step="אסור להציג הפרש. שאל את העובד על הנתונים החסרים")
+    diffs, first = [], None
+    for corner in itertools.product(*[PREVIEW_BOUNDS[f] for f in unknown]):
+        probe = state.model_copy(deep=True)
+        for field, value in zip(unknown, corner):
+            setattr(probe.employee, field, value)
+        result = compare(*_build_inputs(probe))
+        first = first or result
+        diffs.append(result["diff"])
+    if max(diffs) - min(diffs) > 1:
+        return _result(False, error="ההפרש תלוי בנתונים שעדיין חסרים",
+                       next_step="אסור להציג הפרש. המשך לאסוף את הנתונים החסרים")
+    labels = [REQUIRED_EMPLOYEE_FIELDS[f] for f in unknown]
+    return _result(True, {"status": "preview", "diff": first["diff"], "changes": first["changes"],
+                          "explanation": first["explanation"], "unknown_fields": labels},
+                   next_step=("הצג רק את ההפרש (לא נטו מוחלט) וציין שהוא לא תלוי ב: " + ", ".join(labels)
+                              + ". אחר כך שאל על הנתונים האלה כדי להציג נטו מדויק"))
 
 
 # ---------------------------------------------------------------- 6. פנייה לנציג
