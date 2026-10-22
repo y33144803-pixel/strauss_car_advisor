@@ -47,7 +47,7 @@ def set_picker(session_id: str, open_: bool) -> None:
     db.save_state(state)
 
 
-RESET_MESSAGE = "איפסתי את הנתונים הקודמים. נתחיל מחדש - מה תרצה/י לבדוק?"
+RESET_MESSAGE = "איפסתי את הנתונים הקודמים. נתחיל מחדש - מה תרצה לבדוק?"
 
 
 def reset_data(session_id: str) -> None:

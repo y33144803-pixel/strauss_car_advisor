@@ -659,7 +659,7 @@ def test_data_comparison_and_calc_are_collapsed_sections_with_their_own_copy_and
 
 def test_greeting_asks_what_the_employee_wants_to_do():
     import agent
-    assert agent.GREETING.rstrip().endswith("מה תרצה/י לעשות?")
+    assert agent.GREETING.rstrip().endswith("מה תרצה לעשות?")
     assert "נתחיל מהבסיס" not in agent.GREETING
 
 

@@ -880,6 +880,9 @@ def request_representative_info(session_id: str, missing_field: str, context_mes
     data = {"question_id": question_id, "field": REP_FIELDS[missing_field]}
     db.save_state(state)
     step = "עדכן את העובד: 'שלחתי שאלה לנציג התחבורה'. החישוב ממשיך עם ברירת המחדל מהקטלוג עד שתגיע תשובה"
+    if state.current.kind is None:             # הרכב הנוכחי עוד לא הוגדר: הקטלוג נעול, ואסור להציע אותו
+        step = ("עדכן את העובד: 'שלחתי שאלה לנציג התחבורה על הרכב הנוכחי'. עד שתגיע תשובה אי אפשר לפתוח את קטלוג הרכבים - "
+                "אל תציע/י לבדוק רכבים אחרים או את הקטלוג. אפשר להציע רק לחכות לתשובה, לתקן נתון או לצרף תלוש")
     return _result(True, data, next_step=step)
 
 
