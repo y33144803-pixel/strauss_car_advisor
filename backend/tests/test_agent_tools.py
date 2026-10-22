@@ -737,3 +737,18 @@ def test_preview_difference_refuses_when_nothing_is_missing():
     set_corolla_cross_today()
     verify_budget_and_eligibility(SID, "CAR-10")
     assert preview_difference(SID)["ok"] is False                                 # יש הכול: משתמשים ב-calculate_net_salary
+
+
+def test_rep_answer_without_amount_resolves_provisional_participation():
+    from agent_tools import apply_representative_answers
+    fill_script_employee()
+    set_corolla_cross_today()
+    verify_budget_and_eligibility(SID, "CAR-10")
+    update_employee_data(SID, new_participation=100)                  # חריגה מהקטלוג (300): ממתין לנציג
+    qid = db.list_questions("open")[0]["id"]
+    db.answer_question(qid, None, None, "אין סכום מיוחד")             # הנציג לא מאשר חריגה
+    events = apply_representative_answers(SID)
+    state = db.load_state(SID)
+    assert state.target.participation == 300 and state.target.participation_status == "confirmed"
+    assert not state.pending_questions
+    assert events[-1]["recalculated"]["status"] == "final"

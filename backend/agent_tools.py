@@ -589,20 +589,6 @@ def _verify_budget_and_eligibility(session_id: str, choice: str) -> dict:
     if recalculated:
         data["comparison"] = recalculated
     step = "אם אין נתונים חסרים - הפעל calculate_net_salary"
-    if target.participation is None:
-        # ההשתתפות ברכב החדש נקבעת בחברה - העובד לא אמור לדעת אותה, ולכן הפנייה לנציג נפתחת מיד, בקוד,
-        # בלי לשאול את העובד (שמא ינחש). אם העובד מוסר סכום בעצמו - השאלה מתבטלת
-        opened = request_representative_info(session_id, "new_participation", f"השתתפות העובד ב-{target.label}", False)
-        if opened["ok"]:
-            state = db.load_state(session_id)          # הפנייה עדכנה את המצב במסד: העותק המקומי ישן
-            data["representative_question_sent"] = True
-            if "provisional_comparison" in opened["data"]:
-                data["comparison"] = opened["data"]["provisional_comparison"]
-            step = ("הודע לעובד שהשתתפותו ברכב החדש נקבעת בחברה ושכבר שלחת שאלה לנציג התחבורה (הפנייה נפתחה אוטומטית; "
-                    "אל תשאל אותו אם הוא יודע את הסכום). "
-                    + ("הצג את השוואת הביניים וציין שהיא זמנית ותתעדכן כשתגיע תשובה" if "comparison" in data
-                       else "החישוב ימשיך כשתגיע תשובה, ובינתיים השלם את הנתונים החסרים"))
-            return _result(True, data, missing=state.missing_required_fields(), next_step=step)
     return _result(True, data, missing=state.missing_required_fields(),
                    next_step=RECALCULATED_STEP if recalculated else step)
 
@@ -885,6 +871,8 @@ def apply_representative_answers(session_id: str) -> list[dict]:
                 state.target = TargetChoice(kind="waiver", label=f"ויתור - אחזקת רכב {value:,.0f} ₪",
                                       maintenance=float(value), eligibility_reason="אושר על ידי הנציג",
                                       participation=0, participation_status="confirmed")
+        elif field == "new_participation" and state.target.kind == "car"                 and state.target.participation_status == "provisional":
+            state.target.participation_status = "confirmed"       # הנציג לא אישר את החריגה: נשאר ערך הקטלוג הרשמי
         state.pending_questions.pop(field, None)
         state.pending_inquiry_car.pop(field, None)
         events.append({"field": REP_FIELDS.get(field, field), "value": value,
