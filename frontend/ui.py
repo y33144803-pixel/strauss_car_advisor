@@ -98,8 +98,8 @@ BOT_ICON_SVG = (
 def _find_login_image() -> str | None:
     """תמונת מסך הכניסה: images/login-image.* ; אם אין - תמונת הבוט."""
     folder = os.path.join(os.path.dirname(BACKEND_DIR), "images")
-    # login-art.png: התמונה החדשה (login.png, הנציג ברגליים שלמות) בלי רקע, והבוט מקורב לנציג; אחריה הישנות
-    for name, extension in (("login-art", "png"), ("login-image-cutout", "png"), ("login-image", "jpg"),
+    # login-art-v2.png: התמונה החדשה (login.png, הנציג ברגליים שלמות) בלי רקע, והבוט מקורב לנציג; אחריה הישנות
+    for name, extension in (("login-art-v2", "png"), ("login-image-cutout", "png"), ("login-image", "jpg"),
                             ("login-image", "png"), ("login-image", "jpeg"), ("login-image", "webp")):
         path = os.path.join(folder, f"{name}.{extension}")
         if os.path.exists(path):
