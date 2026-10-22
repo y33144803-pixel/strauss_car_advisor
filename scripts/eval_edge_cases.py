@@ -89,9 +89,13 @@ SCENARIOS = [
         ("נפתחה שאלה לנציג על קבוצת זכאות (ולא 'אחר')", lambda c: any(q["missing_field"] == "eligibility_group" for q in c["open_questions"])),
     ]),
     ("full_flow_then_correction", FULL_FLOW + ["אני רוצה לבדוק את ATTO 3", "בעצם הפנסיה שלי 7%"], [
-        ("ההשתתפות ברכב החדש נשלחה לנציג אוטומטית", lambda c: any(q["missing_field"] == "new_participation" for q in c["open_questions"])),
+        ("ההשתתפות ברכב החדש לא נשלחה לנציג (ברירת המחדל מהקטלוג מאושרת)", lambda c: not any(q["missing_field"] == "new_participation" for q in c["open_questions"])),
         ("התיקון נשמר (פנסיה 7)", lambda c: c["state"].employee.pension_rate == 7.0),
         ("הבוט לא שאל את העובד אם הוא יודע את ההשתתפות", lambda c: not any(re.search(r"ידוע לך|האם את/ה יודע|אתה יודע|את יודעת", r) for r in c["replies"][-3:])),
+    ]),
+    ("participation_deviation", FULL_FLOW + ["אני רוצה לבדוק את ATTO 3", "אני משתתפת ב-350 ₪ ברכב הזה"], [
+        ("סכום שונה מהקטלוג נשמר כממתין לאישור (לא כמאושר)", lambda c: any(q["missing_field"] == "new_participation" for q in c["open_questions"])),
+        ("הבוט מסביר שהחישוב זמני ושהבקשה הועברה לאישור", lambda c: re.search(r"זמני|אישור|קצין|נציג", c["replies"][-1]) is not None),
     ]),
     ("english", ["Hi, I want to switch to an electric car. What happens to my net salary?"], [
         ("התשובה בעברית", lambda c: len(HEBREW.findall(c["replies"][-1])) > 0.5 * max(1, len(re.findall(r"[A-Za-zא-ת]", c["replies"][-1])))),
