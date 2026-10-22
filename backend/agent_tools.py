@@ -347,7 +347,7 @@ def offer_reset(session_id: str) -> dict:
     db.save_state(state)
     return _result(True, {"offered": True},
                    next_step="אמור/י לעובד במשפט אחד שהבנת שהוא רוצה לעבור למשהו אחר, ושאפשר לאפס את הנתונים הקודמים או לפתוח שיחה חדשה "
-                         "(הכפתורים מוצגים לו בהודעה שלך). אל תעדכן/י נתונים ואל תפעיל/י עוד כלים עד שיבחר.")
+                         "ואל תזכיר/י כפתורים או מיקום שלהם. אל תעדכן/י נתונים ואל תפעיל/י עוד כלים עד שיבחר.")
 
 
 def set_current_situation(session_id: str, kind: str, candidate_number: Optional[int] = None,
