@@ -311,10 +311,15 @@ div:has(> .st-key-chatbox), div:has(> .st-key-chatbox-btn), div:has(> .st-key-ch
 .st-key-logincard h3 { margin-top: 0; color: #FFFFFF; font-weight: 800; }
 .st-key-logincard [data-testid="stCaptionContainer"], .st-key-logincard [data-testid="stCaptionContainer"] p { color: #D8CCEB; }
 .st-key-logincard [data-testid="stWidgetLabel"] p, .st-key-logincard label { color: #E6DDF5 !important; font-weight: 700; }
-.st-key-logincard [data-baseweb="input"] { background: #2E1A5E !important; border: 1px solid rgba(255,255,255,.2) !important; border-radius: 14px; overflow: hidden; }
+.st-key-logincard [data-baseweb="input"], .st-key-logincard [data-testid="stTextInputRootElement"] { background: #2E1A5E !important; border: 1px solid rgba(255,255,255,.2) !important; border-radius: 14px; overflow: hidden; }
 .st-key-logincard [data-baseweb="base-input"] { background: transparent !important; border: 0 !important; border-radius: 0; box-shadow: none !important; }
 .st-key-logincard input { background: transparent !important; color: #FFFFFF !important; caret-color: #FFFFFF; }
-.st-key-logincard [data-baseweb="input"] button, .st-key-logincard [data-baseweb="input"] svg { color: #E6DDF5 !important; fill: #E6DDF5 !important; }
+/* מילוי אוטומטי של הדפדפן (סיסמה שמורה) צובע את השדה ברקע בהיר משלו - הטקסט הלבן נעלם. מחזירים רקע כהה וטקסט לבן */
+.st-key-logincard input:-webkit-autofill, .st-key-logincard input:-webkit-autofill:hover, .st-key-logincard input:-webkit-autofill:focus {
+    -webkit-text-fill-color: #FFFFFF !important; -webkit-box-shadow: 0 0 0 1000px #2E1A5E inset !important;
+    box-shadow: 0 0 0 1000px #2E1A5E inset !important; caret-color: #FFFFFF; transition: background-color 9999s ease-in-out 0s; }
+.st-key-logincard input:autofill { -webkit-text-fill-color: #FFFFFF !important; box-shadow: 0 0 0 1000px #2E1A5E inset !important; }
+.st-key-logincard [data-baseweb="input"] button, .st-key-logincard [data-baseweb="input"] svg, .st-key-logincard [data-testid="stTextInputRootElement"] button, .st-key-logincard [data-testid="stTextInputRootElement"] svg { color: #E6DDF5 !important; fill: #E6DDF5 !important; }
 .st-key-logincard { position: relative; z-index: 3; }      /* הכרטיס מעל העיגול */
 .st-key-logincard [data-testid="stFormSubmitButton"] button { background: linear-gradient(135deg, #C2378C, #6D2FA0); border: 0;
                     font-weight: 800; border-radius: 14px; min-height: 2.9rem; box-shadow: 0 10px 22px rgba(0,0,0,.3); }
