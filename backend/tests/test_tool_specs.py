@@ -8,9 +8,9 @@ from agent_tools_registry import BOUND_PARAM, build_tools, load_specs, tool_func
 SPECS = load_specs()
 
 
-def test_nine_tools_defined():
-    assert len(SPECS) == 9
-    assert len({s["name"] for s in SPECS}) == 9
+def test_eleven_tools_defined():
+    assert len(SPECS) == 11
+    assert len({s["name"] for s in SPECS}) == 11
 
 
 @pytest.mark.parametrize("spec", SPECS, ids=[s["name"] for s in SPECS])
@@ -46,7 +46,7 @@ def test_gemini_receives_all_tools_with_full_description():
     llm = GoogleGenAI(model="gemini-3.8-flash", api_key="dummy", max_tokens=1000, context_window=10000)
     kwargs = llm._prepare_chat_with_tools(build_tools("s-1"), user_msg="hi")
     declarations = kwargs["tools"][0].function_declarations
-    assert len(declarations) == 9
+    assert len(declarations) == 11
     verify = next(d for d in declarations if d.name == "verify_budget_and_eligibility")
     assert verify.description.startswith("בדיקת זכאות")       # התיאור עצמו לא נחתך
     assert "מחזיר:" in verify.description

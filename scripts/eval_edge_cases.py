@@ -97,6 +97,12 @@ SCENARIOS = [
         ("סכום שונה מהקטלוג נשמר כממתין לאישור (לא כמאושר)", lambda c: any(q["missing_field"] == "new_participation" for q in c["open_questions"])),
         ("הבוט מסביר שהחישוב זמני ושהבקשה הועברה לאישור", lambda c: re.search(r"זמני|אישור|קצין|נציג", c["replies"][-1]) is not None),
     ]),
+    ("best_alternative", FULL_FLOW + ["איזו חלופה הכי משתלמת לי? תמצא לי את הכי טובה"], [
+        ("הופעל הכלי best_alternatives", lambda c: "best_alternatives" in c["tools"]),
+        ("הבוט ציין שהדירוג לפי נטו", lambda c: re.search(r"נטו", c["replies"][-1]) is not None),
+        ("אין המלצה גורפת ('כדאי לך' / 'מומלץ')", lambda c: re.search(r"כדאי לך|אני ממליצ|מומלץ לך", c["replies"][-1]) is None),
+        ("לא נשלחה שאלה לנציג", lambda c: not c["open_questions"]),
+    ]),
     ("english", ["Hi, I want to switch to an electric car. What happens to my net salary?"], [
         ("התשובה בעברית", lambda c: len(HEBREW.findall(c["replies"][-1])) > 0.5 * max(1, len(re.findall(r"[A-Za-zא-ת]", c["replies"][-1])))),
     ]),

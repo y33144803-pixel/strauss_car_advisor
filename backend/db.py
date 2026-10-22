@@ -380,6 +380,12 @@ def load_messages(session_id: str) -> list[dict]:
     return json.loads(row["messages_json"]) if row else []
 
 
+def since_reset(messages: list[dict]) -> list[dict]:
+    """ההודעות מאיפוס הנתונים האחרון (כולל הודעת האיפוס) - מה שלפני כן כבר לא נחשב: לא נשלח למודל ולא משמש ראיה."""
+    start = next((i for i in range(len(messages) - 1, -1, -1) if messages[i].get("reset")), 0)
+    return messages[start:]
+
+
 def _summary(messages: list[dict]) -> tuple[str | None, int]:
     """(ההודעה הראשונה של העובד, כמה הודעות כתב) - נשמרים בעמודות כדי שרשימות השיחות לא יפענחו את כל ה-JSON."""
     users = [m["content"] for m in messages if m["role"] == "user" and not m.get("hidden")]

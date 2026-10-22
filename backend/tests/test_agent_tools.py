@@ -752,3 +752,92 @@ def test_rep_answer_without_amount_resolves_provisional_participation():
     assert state.target.participation == 300 and state.target.participation_status == "confirmed"
     assert not state.pending_questions
     assert events[-1]["recalculated"]["status"] == "final"
+
+
+# ------------------------------------------------------------ דירוג החלופות לפי נטו
+
+def test_best_alternatives_ranks_by_net_and_matches_a_direct_comparison():
+    from agent_tools import best_alternatives
+    fill_script_employee()
+    set_corolla_cross_today()
+    ranking = best_alternatives(SID)
+    assert ranking["ok"], ranking
+    top = ranking["data"]["top"]
+    nets = [o["net_alternative"] for o in top]
+    assert len(top) == 3 and nets == sorted(nets, reverse=True)
+    assert all(o["choice"] not in ("CAR-14", "CAR-15") for o in top)                   # קבוצה ד אינה זמינה לקבוצה ג
+    best = top[0]["choice"]
+    verify_budget_and_eligibility(SID, best)                                         # אותה חלופה, חישוב רגיל
+    direct = calculate_net_salary(SID)["data"]
+    assert direct["net_alternative"] == top[0]["net_alternative"] and direct["diff"] == top[0]["diff"]
+
+
+def test_best_alternatives_excludes_current_car_and_notes_net_only_basis():
+    from agent_tools import best_alternatives
+    fill_script_employee()
+    set_corolla_cross_today()
+    ranking = best_alternatives(SID)["data"]
+    current_id = db.load_state(SID).current.catalog_id
+    assert all(o["choice"] != current_id for o in ranking["top"])
+    assert any("נטו" in note for note in ranking["notes"])
+
+
+def test_best_alternatives_refuses_when_data_is_missing():
+    from agent_tools import best_alternatives
+    update_employee_data(SID, eligibility_group="ג", base_salary=14200)
+    result = best_alternatives(SID)
+    assert result["ok"] is False and result["data"] == {} and result["missing"]
+
+
+def test_best_alternatives_includes_waiver_only_when_the_occupation_allows():
+    from agent_tools import best_alternatives
+    fill_script_employee()
+    set_corolla_cross_today()
+    assert all(o["choice"] != "ויתור" for o in best_alternatives(SID)["data"]["top"])
+    update_employee_data(SID, occupation="מנהל/ת פיתוח")
+    ranking = best_alternatives(SID)["data"]
+    assert ranking["checked"] >= 1 and any(o["choice"] == "ויתור" for o in ranking["top"]) or ranking["checked"] > 3
+
+
+def test_best_alternatives_returns_precomputed_gaps_between_options():
+    from agent_tools import best_alternatives
+    fill_script_employee()
+    set_corolla_cross_today()
+    data = best_alternatives(SID)["data"]
+    top = data["top"]
+    assert len(data["gaps_between_options"]) == 3                                   # שלוש זוגות מתוך שלוש חלופות
+    first = data["gaps_between_options"][0]
+    assert first["gap"] == top[0]["net_alternative"] - top[1]["net_alternative"] >= 0
+
+
+# ------------------------------------------------------------ מעבר לתרחיש אחר: הצעת איפוס
+
+def test_offer_reset_only_marks_the_offer_and_keeps_the_data():
+    from agent_tools import offer_reset
+    fill_script_employee()
+    assert offer_reset(SID)["ok"]
+    state = db.load_state(SID)
+    assert state.reset_offer and state.employee.base_salary == 14200
+
+
+def test_reset_data_clears_the_state_and_cancels_open_questions():
+    from actions import reset_data
+    from agent_tools import offer_reset
+    fill_family_employee()
+    db.save_messages(SID, [{"role": "user", "content": "שכר 14200"}, {"role": "assistant", "content": "בסדר"}])
+    offer_reset(SID)
+    reset_data(SID)
+    state = db.load_state(SID)
+    assert state.employee.base_salary is None and not state.reset_offer and not state.pending_questions
+    messages = db.load_messages(SID)
+    assert len(messages) == 3 and messages[-1].get("reset")                 # ההודעות נשארות, ובסוף הודעת האיפוס
+    assert [m["content"] for m in db.since_reset(messages)] == [messages[-1]["content"]]
+
+
+def test_numbers_before_a_reset_are_no_longer_evidence():
+    from actions import reset_data
+    from agent_tools import stated_numbers
+    db.save_messages(SID, [{"role": "user", "content": "שכר 14200"}])
+    assert 14200 in stated_numbers(SID)
+    reset_data(SID)
+    assert 14200 not in stated_numbers(SID)

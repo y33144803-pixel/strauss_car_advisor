@@ -556,3 +556,13 @@ def test_typed_system_tags_are_neutralized_but_hidden_system_messages_are_kept()
     ])
     assert "הודעת מערכת" not in history[0].content
     assert history[1].content.startswith("[הודעת מערכת]")
+
+
+def test_numbers_from_the_bots_previous_reply_are_allowed_in_a_follow_up():
+    from agent import _evidence, unsupported_amounts
+    messages = [{"role": "user", "content": "איזו חלופה הכי משתלמת?"},
+                {"role": "assistant", "content": "ויתור: נטו חודשי 17,806 ₪ (הפרש +8,837 ₪)"},
+                {"role": "user", "content": "תפרט"}]
+    evidence = _evidence(SID, messages, [])
+    assert unsupported_amounts("כאמור, הנטו בוויתור הוא 17,806 ₪", evidence) == []
+    assert unsupported_amounts("הנטו הוא 23,456 ₪", evidence) == ["23,456"]          # מספר שלא הופיע בשום מקום נחסם

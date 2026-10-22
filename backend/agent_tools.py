@@ -12,7 +12,7 @@ from typing import Optional
 import db
 from calc_engine import MAX_CREDIT_POINTS, MAX_MONTHLY_AMOUNT, CarSituation, SalaryInput, compare, display_round
 from data_store import find_car, find_car_by_name, find_occupation, get_catalog, get_occupations, get_rules
-from eligibility import (is_family_car, check_car_choice, check_waiver, family_employee_share,
+from eligibility import (car_situation, is_family_car, check_car_choice, check_waiver, family_employee_share,
                          group_budget, lookup_catalog_usage_value)
 from state import REQUIRED_EMPLOYEE_FIELDS, ConversationState, TargetChoice
 from usage_value_db import get_usage_value as db_get_usage_value
@@ -51,7 +51,7 @@ def _drive_name(drive_code: str) -> str:
     return get_rules()["valueOfUse"]["driveField"].get(str(drive_code), "לא ידוע")
 
 
-def _cancel_pending(state: ConversationState, field: str) -> None:
+def cancel_pending(state: ConversationState, field: str) -> None:
     """שאלה פתוחה לנציג על שדה שנעשה לא רלוונטי - מבטלים אותה ומשחררים את ההמתנה."""
     question_id = state.pending_questions.pop(field, None)
     state.pending_inquiry_car.pop(field, None)
@@ -68,7 +68,7 @@ _NUMBER_TOKEN = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(k|K|ק|אלף)?")
 def stated_numbers(session_id: str) -> set[float]:
     """כל המספרים שהעובד כתב בשיחה (גם "12K" / "12 אלף" -> 12000, וגם "2,25" -> 2.25 ו-225)."""
     found: set[float] = set()
-    for message in db.load_messages(session_id):
+    for message in db.since_reset(db.load_messages(session_id)):
         if message["role"] != "user" or message.get("hidden"):
             continue
         for raw, suffix in _NUMBER_TOKEN.findall(message["content"]):
@@ -218,7 +218,7 @@ def update_employee_data(session_id: str,
                 apply(state.target, "participation", float(new_participation), "השתתפות ברכב החדש")
                 state.target.participation_status = "confirmed"
                 if state.pending_inquiry_car.get("new_participation") in (None, state.target.catalog_id):
-                    _cancel_pending(state, "new_participation")     # העובד מסר את הערך הרשמי - אין מה לשאול
+                    cancel_pending(state, "new_participation")     # העובד מסר את הערך הרשמי - אין מה לשאול
             else:
                 # חריגה מהקטלוג: לא נשמרת כמאושרת. הערך הרשמי נשאר, והנציג מאשר או דוחה את החריגה
                 apply(state.target, "participation", catalog_value, "השתתפות ברכב החדש (מהקטלוג)")
@@ -232,6 +232,7 @@ def update_employee_data(session_id: str,
 
     if updated:
         state.invalidate_result()
+        state.last_ranking = None                  # הדירוג חושב על נתונים אחרים
     recalculated = _auto_recalculate(state)
     db.save_state(state)
 
@@ -339,6 +340,16 @@ def find_current_car(session_id: str, commercial_name: str, registration_year: O
     return _result(True, {"candidates": candidates}, next_step=step)
 
 
+def offer_reset(session_id: str) -> dict:
+    """העובד עובר לתרחיש אחר: מסמן שיוצג לו בצד המסך "איפוס נתונים / שיחה חדשה". לא משנה שום נתון."""
+    state = db.load_state(session_id)
+    state.reset_offer = True
+    db.save_state(state)
+    return _result(True, {"offered": True},
+                   next_step="אמור/י לעובד במשפט אחד שהבנת שהוא רוצה לעבור למשהו אחר, ושאפשר לאפס את הנתונים הקודמים או לפתוח שיחה חדשה "
+                         "(הכפתורים מוצגים לו בהודעה שלך). אל תעדכן/י נתונים ואל תפעיל/י עוד כלים עד שיבחר.")
+
+
 def set_current_situation(session_id: str, kind: str, candidate_number: Optional[int] = None,
                           maintenance: Optional[float] = None, participation: Optional[float] = None) -> dict:
     """קביעת המצב היום: car (רכב מתוך המועמדים), waiver (אחזקת רכב), none (ללא רכב)."""
@@ -393,6 +404,7 @@ def set_current_situation(session_id: str, kind: str, candidate_number: Optional
         return _result(False, error="kind חייב להיות car / waiver / none")
 
     state.invalidate_result()
+    state.last_ranking = None                      # המצב היום השתנה: הדירוג כבר לא תקף
     recalculated = _auto_recalculate(state)
     db.save_state(state)
     missing = state.missing_required_fields()
@@ -560,7 +572,7 @@ def _verify_budget_and_eligibility(session_id: str, choice: str) -> dict:
         return _result(False, error=record["error"], next_step="פנה לנציג - שווי השימוש לא נמצא במאגר")
     same_car = target.kind == "car" and target.catalog_id == car["id"]
     if not same_car and state.pending_inquiry_car.get("new_participation"):
-        _cancel_pending(state, "new_participation")     # השאלה הייתה על רכב קודם - העובד עבר לרכב אחר
+        cancel_pending(state, "new_participation")     # השאלה הייתה על רכב קודם - העובד עבר לרכב אחר
     keep_participation = (target.participation, target.participation_status,
                           target.participation_effective_from) if same_car else (None, "missing", None)
     target = state.target = TargetChoice(
@@ -763,6 +775,65 @@ def preview_difference(session_id: str) -> dict:
                               + ". אחר כך שאל על הנתונים האלה כדי להציג נטו מדויק"))
 
 
+BEST_ALTERNATIVES_TOP = 3
+_TARGET_LABELS = ("החלופה המבוקשת", "השתתפות עובד ברכב החדש")
+
+
+def best_alternatives(session_id: str) -> dict:
+    """דירוג כל החלופות שהעובד זכאי להן לפי הנטו החודשי, במנוע החישוב בלבד (בלי מודל שפה ובלי ניחוש).
+    כל רכב נבדק עם ברירת המחדל מהקטלוג להשתתפות; ויתור נכלל כשהעיסוק מאפשר. הדירוג הוא לפי נטו בלבד."""
+    state = db.load_state(session_id)
+    missing = [m for m in state.missing_required_fields() if not m.startswith(_TARGET_LABELS)]
+    if missing:
+        return _result(False, error="עדיין חסרים נתונים לדירוג", missing=missing,
+                       next_step="אסור להציג דירוג. שאל את העובד על הנתונים החסרים")
+    allowed = allowed_catalog(state)
+    group = state.employee.eligibility_group
+    probe = state.model_copy(deep=True)
+    probe.target = TargetChoice(kind="waiver", label="חלופה")        # רק כדי לבנות את נתוני השכר והמצב היום
+    salary, today, _ = _build_inputs(probe)
+
+    options, rules = [], get_rules()
+    for entry in allowed["cars"]:
+        if entry["id"] == state.current.catalog_id:
+            continue                                                     # הרכב שיש לו היום אינו חלופה
+        car = find_car(entry["id"])
+        try:
+            alt = car_situation(car, float(car["default_participation"]), group, rules)
+        except ValueError:
+            continue                                                     # שווי שימוש לא נמצא במאגר: לא מדרגים בניחוש
+        result = compare(salary, today, alt, rules)
+        options.append({"choice": entry["id"], "label": entry["display_name"], "drive": entry["drive"],
+                        "usage_value": display_round(alt.usage_value),
+                        "participation": display_round(alt.participation),
+                        "family_employee_share": display_round(alt.family_employee_share),
+                        "net_alternative": result["net_alternative"], "diff": result["diff"]})
+    if allowed["waiver_allowed"]:
+        waiver = check_waiver(state.employee.occupation)
+        alt = CarSituation(label="ויתור על הרכב", maintenance=float(waiver["maintenance"]))
+        result = compare(salary, today, alt, rules)
+        options.append({"choice": WAIVER_CHOICE, "label": f"ויתור על הרכב (אחזקה {waiver['maintenance']:,} ₪)",
+                        "drive": "-", "usage_value": 0, "participation": 0, "family_employee_share": 0,
+                        "net_alternative": result["net_alternative"], "diff": result["diff"]})
+    if not options:
+        return _result(False, error="לא נמצאו חלופות לדרג", next_step="אל תציג דירוג")
+    options.sort(key=lambda o: o["net_alternative"], reverse=True)
+    net_today = compare(salary, today, today, rules)["net_today"]
+    notes = ["הדירוג לפי הנטו החודשי בלבד, ולא לפי העדפות כמו גודל הרכב או המותג",
+             "ההשתתפות בכל רכב לפי ברירת המחדל שבקטלוג"]
+    if allowed.get("family_track_note"):
+        notes.append("רכבי מסלול ברוכת ילדים לא נבדקו כי חסר מספר הילדים")
+    top = options[:BEST_ALTERNATIVES_TOP]
+    state.last_ranking = {"net_today": net_today, "options": options, "notes": notes}       # לטבלה במסך (כל החלופות)
+    db.save_state(state)
+    gaps = [{"better": a["label"], "worse": b["label"], "gap": a["net_alternative"] - b["net_alternative"]}
+            for i, a in enumerate(top) for b in top[i + 1:]]               # כדי שהבוט לא יחשב הפרשים בעצמו
+    return _result(True, {"net_today": net_today, "checked": len(options),
+                          "top": top, "gaps_between_options": gaps, "notes": notes},
+                   next_step=("הצג את החלופות בסדר שהוחזר, עם הנטו וההפרש מול היום, וציין שהדירוג לפי נטו בלבד. "
+                              "אל תמליץ על רכב מסוים מעבר לנתונים, ושאל אם לבדוק חלופה לעומק (verify_budget_and_eligibility)"))
+
+
 # ---------------------------------------------------------------- 6. פנייה לנציג
 
 _UNKNOWN_RE = re.compile(
@@ -792,7 +863,7 @@ def request_representative_info(session_id: str, missing_field: str, context_mes
     inquiry_car = state.target.catalog_id if missing_field == "new_participation" and state.target.kind == "car" else None
     existing = db.find_open_question(session_id, missing_field)
     if existing and inquiry_car and state.pending_inquiry_car.get(missing_field) not in (None, inquiry_car):
-        _cancel_pending(state, missing_field)         # שאלה פתוחה על רכב אחר מוחלפת בשאלה על הרכב הנוכחי
+        cancel_pending(state, missing_field)         # שאלה פתוחה על רכב אחר מוחלפת בשאלה על הרכב הנוכחי
         existing = None
     if existing:
         question_id = existing["id"]

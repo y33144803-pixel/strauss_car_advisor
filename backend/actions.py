@@ -3,8 +3,9 @@
 משתמשות באותם כלים של הסוכן, ולכן אותם כללים ואותן בדיקות. ההודעה שנוספת לשיחה נבנית בקוד, מתוצאת המנוע.
 """
 import db
-from agent_tools import (WAIVER_CHOICE, allowed_catalog, calculate_net_salary, current_situation_known,
+from agent_tools import (WAIVER_CHOICE, allowed_catalog, calculate_net_salary, cancel_pending, current_situation_known,
                          request_representative_info, update_employee_data, verify_budget_and_eligibility)
+from state import ConversationState
 
 PICKER_BUTTONS_MAX = 5      # עד כמה רכבים - כפתורים; מעל זה - טבלה לבחירה
 
@@ -44,6 +45,21 @@ def set_picker(session_id: str, open_: bool) -> None:
     state = db.load_state(session_id)
     state.picker_open = open_
     db.save_state(state)
+
+
+RESET_MESSAGE = "איפסתי את הנתונים הקודמים. נתחיל מחדש - מה תרצה/י לבדוק?"
+
+
+def reset_data(session_id: str) -> None:
+    """איפוס נתוני העובד (העובד אישר): מצב ריק, שאלות פתוחות לנציג מבוטלות. ההודעות נשארות על המסך, אבל הבוט לא רואה
+    את מה שלפני הודעת האיפוס."""
+    state = db.load_state(session_id)
+    for field in list(state.pending_questions):
+        cancel_pending(state, field)
+    db.save_state(ConversationState(session_id=session_id))          # בלי טעינה קודמת: דורס את המצב כולו
+    messages = db.load_messages(session_id)
+    messages.append({"role": "assistant", "content": RESET_MESSAGE, "source": "screen", "reset": True})
+    db.save_messages(session_id, messages)
 
 
 def pick_message(choice: str, cars: list[dict]) -> str:

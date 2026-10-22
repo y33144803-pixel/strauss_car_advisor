@@ -244,7 +244,7 @@ def _history_messages(messages: list[dict]) -> list:
     return [ChatMessage(role=roles[m["role"]],
                         content=content_of(m) + (f"\n\n[הערת הנציג - לשימושך בלבד, אל תצטט/י אותה לעובד: {m['bot_note']}]"
                                                  if m.get("bot_note") else ""))
-            for m in messages[-HISTORY_LIMIT:] if m["role"] in roles]
+            for m in db.since_reset(messages)[-HISTORY_LIMIT:] if m["role"] in roles]
 
 
 STATUS_ANALYZING = "בוחן את הנתונים שלך..."          # לפני הפנייה הראשונה למודל
@@ -362,8 +362,11 @@ def _numbers(text: str) -> set[float]:
 
 
 def _evidence(session_id: str, messages: list[dict], tool_log: list[dict]) -> set[float]:
-    """כל המספרים שמותר לבוט להזכיר: מהעובד, מתוצאות כלים ומהמצב השמור."""
+    """כל המספרים שמותר לבוט להזכיר: מהעובד, מתוצאות כלים ומהמצב השמור, ומתשובות קודמות של הבוט עצמו
+    (הן כבר עברו את השומר, ולכן שאלת המשך על תוצאה קודמת - למשל דירוג חלופות - לא נחסמת)."""
+    messages = db.since_reset(messages)
     text = " ".join(m["content"] for m in messages if m["role"] == "user" and not m.get("hidden"))
+    text += " " + " ".join(m["content"] for m in messages if m["role"] == "assistant")
     text += json.dumps([t["output"] for t in tool_log], ensure_ascii=False)
     text += state_snapshot(session_id)
     return _numbers(text)
@@ -478,6 +481,10 @@ def chat(session_id: str, user_text: str | None = None, llm=None, on_step=None, 
     else:
         messages.append({"role": "user", "content": user_text})
         db.append_messages(session_id, [{"role": "user", "content": user_text}])
+        state = db.load_state(session_id)
+        if state.reset_offer:                    # העובד המשיך לכתוב: הצעת האיפוס שהוצגה בתור הקודם נסגרת
+            state.reset_offer = False
+            db.save_state(state)
 
     history = _history_messages(messages)
     note = picker_context_note(messages)

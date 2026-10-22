@@ -82,7 +82,9 @@ class ConversationState(BaseModel):
     # שדה חסר -> מזהה רכב הקטלוג שעליו נשאלה השאלה. תשובת הנציג מחושבת על הרכב הזה גם אם בינתיים נבדקה חלופה אחרת
     pending_inquiry_car: dict[str, str] = Field(default_factory=dict)
     last_result: Optional[dict] = None
+    last_ranking: Optional[dict] = None     # דירוג כל החלופות לפי נטו (best_alternatives); נמחק כשנתוני העובד או המצב היום משתנים
     result_is_stale: bool = False
+    reset_offer: bool = False               # הבוט הציע לאפס את הנתונים (העובד עבר לתרחיש אחר); המסך מציג הודעה עם כפתורים
     # מקור כל נתון (מפתח: שם השדה): employee / payslip / representative. נתונים שמקורם בטבלאות (רכב, שווי שימוש) נגזרים מהמצב
     sources: dict[str, str] = Field(default_factory=dict)
     # צילום המצב כפי שנטען מהמסד: השמירה כותבת רק את מה שהשתנה לעומתו (ראו db.save_state)
