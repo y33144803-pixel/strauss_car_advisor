@@ -99,12 +99,10 @@ def test_representative_answer_resumes_conversation():
         [("set_current_situation", {"kind": "car", "candidate_number": 1})],
         [("update_employee_data", {"current_participation": 300})],
         [("verify_budget_and_eligibility", {"choice": "CAR-10"})],
-        [("request_representative_info", {"missing_field": "new_participation",
-                                          "context_message": "השתתפות ב-ATTO 3",
-                                          "employee_confirmed_unknown": True})],
-        "חסר לי סכום ההשתתפות שלך ברכב החדש - שלחתי שאלה לנציג התחבורה.",
+        [("update_employee_data", {"new_participation": 350})],       # שונה מהקטלוג (300): נשאלת שאלה לנציג
+        "שמרתי את הסכום שמסרת, והשאלה לנציג התחבורה נשלחה לאישור.",
     ])
-    chat(SID, "קבוצה ג, שכר 14200, עמלות 1000, פנסיה 6, קרן השתלמות 2.5, נקודות 2.25, השתתפות היום 300, ואני לא יודע כמה אשתתף ברכב החדש", llm=llm)
+    chat(SID, "קבוצה ג, שכר 14200, עמלות 1000, פנסיה 6, קרן השתלמות 2.5, נקודות 2.25, השתתפות היום 300, ואני משתתף ב-350 ברכב החדש", llm=llm)
     state = db.load_state(SID)
     assert state.waiting_for_representative and state.last_result["status"] == "provisional"
 

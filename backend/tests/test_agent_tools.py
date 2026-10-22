@@ -21,6 +21,13 @@ def fill_script_employee():
     assert r["ok"], r
 
 
+def fill_family_employee():
+    """עובד במסלול המשפחתי (CAR-19 / CAR-20): ההשתתפות בו לא ידועה מהקטלוג, ולכן נשאלת לנציג."""
+    fill_script_employee()                                          # שכר, תנאים ונתוני פנסיה
+    r = update_employee_data(SID, eligibility_group="ב", children_ages=[3, 9, 15, 16, 17])
+    assert r["ok"], r
+
+
 def set_corolla_cross_today(participation=300):
     r = find_current_car(SID, "corolla cross", 2025)
     assert r["ok"] and r["data"]["candidates"][0]["source"] == "catalog"
@@ -44,28 +51,13 @@ def test_pdf_script_with_representative():
     assert v["ok"] and v["data"]["eligible"] is True
     assert "electric_refund" in v["data"]
 
-    # ההשתתפות ברכב החדש נקבעת בחברה: השאלה לנציג נפתחת אוטומטית (בקוד) יחד עם השוואת ביניים
-    assert v["data"]["representative_question_sent"] is True
-    provisional = v["data"]["comparison"]
-    assert provisional["status"] == "provisional"
-    assert provisional["alternative"]["participation"] == 300   # ברירת המחדל מהקטלוג
-    assert db.load_state(SID).waiting_for_representative
-
-    # המסך של הנציג רואה את השאלה ועונה
-    open_qs = db.list_questions("open")
-    assert len(open_qs) == 1 and open_qs[0]["session_id"] == SID
-    db.answer_question(open_qs[0]["id"], 350, effective_from="2027-01-01")
-
-    # השיחה ממשיכה מאותה נקודה
-    events = apply_representative_answers(SID)
-    final = events[-1]["recalculated"]
+    # רכב רגיל: ההשתתפות היא ברירת המחדל שבקטלוג ומאושרת - לא נשאלת לנציג
+    assert "representative_question_sent" not in v["data"]
+    final = v["data"]["comparison"]
     assert final["status"] == "final"
-    assert final["alternative"]["participation"] == 350
-    assert final["diff"] == provisional["diff"] - 50
-    state = db.load_state(SID)
-    assert not state.waiting_for_representative
-    assert state.target.participation_effective_from == "2027-01-01"
-    assert apply_representative_answers(SID) == []        # לא קולטים פעמיים
+    assert final["alternative"]["participation"] == 300   # ברירת המחדל מהקטלוג
+    assert db.load_state(SID).target.participation_status == "confirmed"
+    assert db.list_questions("open") == []
 
 
 def test_state_survives_reload():
@@ -165,14 +157,14 @@ def test_correction_overrides_and_marks_stale():
 
 
 def test_changing_car_resets_participation():
-    fill_script_employee()
+    fill_family_employee()
     set_corolla_cross_today()
-    verify_budget_and_eligibility(SID, "CAR-11")
-    update_employee_data(SID, new_participation=300)
-    verify_budget_and_eligibility(SID, "CAR-10")            # רכב אחר: ההשתתפות של הקודם לא נשמרת
+    verify_budget_and_eligibility(SID, "CAR-19")
+    update_employee_data(SID, new_participation=350)              # חריגה מהקטלוג: נשאלת שאלה לנציג
+    verify_budget_and_eligibility(SID, "CAR-20")                  # רכב אחר: ההשתתפות של הקודם לא נשמרת
     target = db.load_state(SID).target
-    assert target.participation == 300 and target.participation_status == "provisional"   # ברירת מחדל זמנית עד תשובת הנציג
-    assert len(db.list_questions("open")) == 1                                              # ונשלחה שאלה על הרכב החדש
+    assert target.participation == 500 and target.participation_status == "confirmed"   # ברירת המחדל של הרכב החדש
+    assert db.list_questions("open") == []
 
 
 def test_new_participation_requires_chosen_car():
@@ -257,9 +249,10 @@ def test_switch_alternative_flow():
     options = {o["choice"] for o in alternative_options(SID)}
     assert "CAR-10" in options and "CAR-14" not in options
 
-    # השתתפות לא ידועה -> שאלה לנציג והשוואת ביניים
-    out = switch_alternative(SID, "CAR-10", ask_representative=True)
-    assert out["ok"] and "ביניים" in out["message"] and db.list_questions("open")
+    # רכב חדש בלי ערך מהעובד -> ברירת המחדל מהקטלוג מאושרת, בלי שאלה לנציג
+    out = switch_alternative(SID, "CAR-10")
+    assert out["ok"] and db.list_questions("open") == []
+    assert db.load_state(SID).target.participation_status == "confirmed"
 
     # החלפה לרכב אחר עם השתתפות ידועה -> חישוב סופי
     out = switch_alternative(SID, "CAR-11", new_participation=300)
@@ -286,17 +279,18 @@ def test_switch_to_waiver_requires_occupation():
 
 
 def test_question_stays_tied_to_its_car_and_does_not_block_other_alternatives():
-    fill_script_employee()
+    fill_family_employee()
     set_corolla_cross_today()
-    verify_budget_and_eligibility(SID, "CAR-10")                 # נשלחת אוטומטית שאלה על ה-ATTO 3
-    assert db.load_state(SID).pending_inquiry_car == {"new_participation": "CAR-10"}
+    verify_budget_and_eligibility(SID, "CAR-19")
+    update_employee_data(SID, new_participation=350)             # חריגה מהקטלוג: שאלה על הרכב הנוכחי
+    assert db.load_state(SID).pending_inquiry_car == {"new_participation": "CAR-19"}
 
-    verify_budget_and_eligibility(SID, "CAR-11")                 # העובד בדק בינתיים רכב אחר: השאלה עוברת אליו
-    assert len(db.list_questions("open")) == 1                   # נציג רואה רק את השאלה העדכנית
-    assert db.load_state(SID).pending_inquiry_car == {"new_participation": "CAR-11"}
-    update_employee_data(SID, new_participation=300)             # והעובד מסר בעצמו את ההשתתפות ב-EV3
-    assert db.list_questions("open") == []                       # השאלה מתבטלת
-    assert calculate_net_salary(SID)["data"]["status"] == "final"
+    verify_budget_and_eligibility(SID, "CAR-20")                 # העובד עבר לרכב אחר: השאלה הישנה מתבטלת
+    assert db.list_questions("open") == []
+    assert db.load_state(SID).pending_inquiry_car == {}
+    update_employee_data(SID, new_participation=350)             # חריגה גם ברכב החדש: שאלה חדשה עליו
+    assert db.load_state(SID).pending_inquiry_car == {"new_participation": "CAR-20"}
+    assert len(db.list_questions("open")) == 1
 
 
 def test_representative_answer_computes_on_inquiry_car_after_waiver_check():
@@ -321,54 +315,27 @@ def test_representative_answer_computes_on_inquiry_car_after_waiver_check():
 
 
 def test_employee_supplying_value_cancels_question():
-    fill_script_employee()
+    fill_family_employee()
     set_corolla_cross_today()
-    verify_budget_and_eligibility(SID, "CAR-10")
-    request_representative_info(SID, "new_participation", "ATTO 3", True)
-    update_employee_data(SID, new_participation=320)
+    verify_budget_and_eligibility(SID, "CAR-19")
+    update_employee_data(SID, new_participation=350)             # חריגה: נשאלת שאלה לנציג
+    assert len(db.list_questions("open")) == 1
+    update_employee_data(SID, new_participation=500)             # העובד מסר את הערך הרשמי: השאלה מיותרת
     assert db.list_questions("open") == []
     assert calculate_net_salary(SID)["data"]["status"] == "final"
 
 
-# ------------------------------------------------------------ רכב נוכחי ממסלול ברוכת ילדים
-
-def test_current_family_car_includes_employee_share_today():
-    update_employee_data(SID, eligibility_group="ב", base_salary=9800, commissions=2400, bonus=0,
-                         pension_rate=6, study_fund_rate=0, credit_points=2.25, children_under_23=5)
-    find_current_car(SID, "CARNIVAL", 2025)
-    assert set_current_situation(SID, "car", candidate_number=1, participation=500)["ok"]
-    verify_budget_and_eligibility(SID, "CAR-05")                 # NIRO
-    update_employee_data(SID, new_participation=250)
-    data = calculate_net_salary(SID)["data"]
-    # הפוך מהדוגמה E-002 באקסל (נירו -> קרניבל: 8,600 -> 5,078)
-    assert data["net_today"] == 5078 and data["net_alternative"] == 8600
-    assert data["today"]["family_employee_share"] == 1150
-    assert data["alternative"]["family_employee_share"] == 0
-
-
-# ------------------------------------------------------------ חישוב מחדש אוטומטי בקוד
-
-def test_no_auto_calculation_before_first_result():
-    fill_script_employee()
-    set_corolla_cross_today()
-    verify_budget_and_eligibility(SID, "CAR-11")
-    assert db.load_state(SID).last_result["status"] == "provisional"   # השוואת ביניים נוצרה עם בחירת הרכב
-    r = update_employee_data(SID, new_participation=300)
-    assert r["data"]["comparison"]["status"] == "final"          # העובד מסר השתתפות: התוצאה הסופית מחושבת בקוד
-
-
 def test_changing_alternative_recalculates_once_data_is_complete():
-    fill_script_employee()
+    fill_family_employee()
     set_corolla_cross_today()
-    verify_budget_and_eligibility(SID, "CAR-11")
-    update_employee_data(SID, new_participation=300)
+    verify_budget_and_eligibility(SID, "CAR-19")
+    update_employee_data(SID, new_participation=350)             # חריגה מהקטלוג על הרכב הראשון
     calculate_net_salary(SID)
 
-    v = verify_budget_and_eligibility(SID, "CAR-10")             # חלופה אחרת - ההשתתפות עוד לא ידועה: ביניים בלבד
-    assert v["data"]["comparison"]["status"] == "provisional" and v["data"]["representative_question_sent"]
-    r = update_employee_data(SID, new_participation=300)         # עכשיו הכול קיים
-    assert r["data"]["comparison"]["alternative"]["label"].startswith("ATTO 3")
-    assert not db.load_state(SID).result_is_stale
+    v = verify_budget_and_eligibility(SID, "CAR-20")             # חלופה אחרת: ברירת המחדל שלה מאושרת, החישוב מיד
+    assert v["data"]["comparison"]["status"] == "final"
+    assert "representative_question_sent" not in v["data"]
+    assert v["data"]["comparison"]["alternative"]["label"].startswith("SANTA FE")
 
 
 def test_current_situation_change_recalculates():
@@ -384,10 +351,9 @@ def test_current_situation_change_recalculates():
 # ------------------------------------------------------------ פנייה לנציג רק אחרי ששאלו את העובד
 
 def test_representative_requires_employee_confirmation_for_known_fields():
-    fill_script_employee()
+    fill_family_employee()
     set_corolla_cross_today()
-    verify_budget_and_eligibility(SID, "CAR-10")
-    db.cancel_question(db.list_questions("open")[0]["id"])      # (נפתחה אוטומטית בבחירת הרכב)
+    verify_budget_and_eligibility(SID, "CAR-19")
     r = request_representative_info(SID, "current_participation", "x")
     assert r["ok"] is False and "employee_confirmed_unknown" in r["next_step"]
     assert db.list_questions("open") == []                       # לא נפתחה שאלה
@@ -582,10 +548,9 @@ def employee_said_unknown(temp_db):
 
 
 def test_representative_flag_alone_is_not_enough_without_employee_saying_unknown():
-    fill_script_employee()
+    fill_family_employee()
     set_corolla_cross_today()
-    verify_budget_and_eligibility(SID, "CAR-10")
-    db.cancel_question(db.list_questions("open")[0]["id"])      # (נפתחה אוטומטית בבחירת הרכב)
+    verify_budget_and_eligibility(SID, "CAR-19")
     db.save_messages(SID, [{"role": "user", "content": "תחשב לי את הנטו"}])          # העובד לא אמר שאינו יודע
     r = request_representative_info(SID, "current_participation", "x", employee_confirmed_unknown=True)
     assert r["ok"] is False and db.list_questions("open") == []

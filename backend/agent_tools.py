@@ -212,10 +212,22 @@ def update_employee_data(session_id: str,
         elif state.target.kind != "car":
             errors.append("עדיין לא נבחר רכב חדש - קודם יש לבחור ולאמת רכב מהקטלוג")
         else:
-            apply(state.target, "participation", float(new_participation), "השתתפות ברכב החדש")
-            state.target.participation_status = "confirmed"
-            if state.pending_inquiry_car.get("new_participation") in (None, state.target.catalog_id):
-                _cancel_pending(state, "new_participation")     # העובד מסר בעצמו - השאלה לנציג מיותרת
+            catalog_value = float(find_car(state.target.catalog_id)["default_participation"])
+            if float(new_participation) == catalog_value:
+                apply(state.target, "participation", float(new_participation), "השתתפות ברכב החדש")
+                state.target.participation_status = "confirmed"
+                if state.pending_inquiry_car.get("new_participation") in (None, state.target.catalog_id):
+                    _cancel_pending(state, "new_participation")     # העובד מסר את הערך הרשמי - אין מה לשאול
+            else:
+                # חריגה מהקטלוג: לא נשמרת כמאושרת. הערך הרשמי נשאר, והנציג מאשר או דוחה את החריגה
+                apply(state.target, "participation", catalog_value, "השתתפות ברכב החדש (מהקטלוג)")
+                state.target.participation_status = "provisional"       # לא מאושר עד תשובת הנציג
+                db.save_state(state)
+                request_representative_info(
+                    session_id, "new_participation",
+                    f"העובד מסר השתתפות {float(new_participation):,.0f} ₪ ב-{state.target.label}, "
+                    f"והקטלוג מציין {catalog_value:,.0f} ₪")
+                state = db.load_state(session_id)           # הפנייה עדכנה את המצב במסד
 
     if updated:
         state.invalidate_result()
@@ -546,6 +558,8 @@ def _verify_budget_and_eligibility(session_id: str, choice: str) -> dict:
     if not record["found"]:
         return _result(False, error=record["error"], next_step="פנה לנציג - שווי השימוש לא נמצא במאגר")
     same_car = target.kind == "car" and target.catalog_id == car["id"]
+    if not same_car and state.pending_inquiry_car.get("new_participation"):
+        _cancel_pending(state, "new_participation")     # השאלה הייתה על רכב קודם - העובד עבר לרכב אחר
     keep_participation = (target.participation, target.participation_status,
                           target.participation_effective_from) if same_car else (None, "missing", None)
     target = state.target = TargetChoice(
@@ -556,6 +570,11 @@ def _verify_budget_and_eligibility(session_id: str, choice: str) -> dict:
         participation=keep_participation[0], participation_status=keep_participation[1],
         participation_effective_from=keep_participation[2],
     )
+    if target.participation is None:
+        # ההשתתפות הקבועה היא ברירת המחדל שבקטלוג - נתון מאושר, בלי שאלה לנציג ובלי ערך זמני.
+        # חלק הפער במסלול המשפחתי מתווסף אליה בחישוב (family_employee_share), ולא נשמר כאן
+        target.participation = float(car["default_participation"])
+        target.participation_status = "confirmed"
     state.picker_open = False               # נבחרה חלופה - בורר הרכבים נסגר
     state.invalidate_result()
     recalculated = _auto_recalculate(state) or _compute_if_ready(state)
@@ -768,16 +787,8 @@ def request_representative_info(session_id: str, missing_field: str, context_mes
     state.waiting_for_representative = True
 
     data = {"question_id": question_id, "field": REP_FIELDS[missing_field]}
-    if missing_field == "new_participation" and state.target.kind == "car":
-        car = find_car(state.target.catalog_id)
-        state.target.participation = float(car["default_participation"])
-        state.target.participation_status = "provisional"
-        if not state.missing_required_fields():
-            data["provisional_comparison"] = _compute(state, "provisional")
     db.save_state(state)
-    step = ("עדכן את העובד: 'שלחתי שאלה לנציג התחבורה'. "
-            + ("הצג את השוואת הביניים וציין שהיא תתעדכן כשתגיע תשובה" if "provisional_comparison" in data
-               else "החישוב ימשיך כשתגיע תשובה"))
+    step = "עדכן את העובד: 'שלחתי שאלה לנציג התחבורה'. החישוב ממשיך עם ברירת המחדל מהקטלוג עד שתגיע תשובה"
     return _result(True, data, next_step=step)
 
 

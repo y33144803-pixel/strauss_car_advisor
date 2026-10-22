@@ -75,8 +75,7 @@ def _append_assistant(session_id: str, text: str) -> None:
     db.save_messages(session_id, messages)
 
 
-def switch_alternative(session_id: str, choice: str, new_participation: float | None = None,
-                       ask_representative: bool = False) -> dict:
+def switch_alternative(session_id: str, choice: str, new_participation: float | None = None) -> dict:
     """החלפת החלופה וחישוב מחדש. מחזיר {'ok': bool, 'message': str} ומוסיף את ההודעה לשיחה."""
     verdict = verify_budget_and_eligibility(session_id, choice)
     if not verdict["ok"]:
@@ -94,15 +93,6 @@ def switch_alternative(session_id: str, choice: str, new_participation: float | 
         if not update["ok"]:
             _append_assistant(session_id, update["error"])
             return {"ok": False, "message": update["error"]}
-    elif ask_representative and choice != WAIVER_CHOICE:
-        asked = request_representative_info(
-            session_id, "new_participation", "העובד בחר חלופה חדשה ואינו יודע את גובה ההשתתפות בה",
-            employee_confirmed_unknown=True)    # העובד סימן במסך שההשתתפות לא ידועה לו
-        result = asked["data"].get("provisional_comparison")
-        message = ("שלחתי שאלה לנציג התחבורה לגבי ההשתתפות ברכב החדש. "
-                   + (format_result_message(result) if result else "החישוב ימשיך כשתגיע תשובה."))
-        _append_assistant(session_id, message)
-        return {"ok": True, "message": message}
 
     calc = calculate_net_salary(session_id)
     if not calc["ok"]:
